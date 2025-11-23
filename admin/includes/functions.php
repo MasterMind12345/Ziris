@@ -186,6 +186,249 @@ function getSystemSettings() {
     }
 }
 
+
+// Récupérer les absences du jour avec retard en heures
+function getAbsencesDuJour() {
+    global $pdo;
+    
+    try {
+        $date_aujourdhui = date('Y-m-d');
+        
+        $stmt = $pdo->prepare("
+            SELECT u.id, u.nom, u.email, p.nom as poste, 
+                   (SELECT MAX(date_presence) FROM presences WHERE user_id = u.id) as derniere_presence,
+                   ROUND(COALESCE(AVG(pr.retard_minutes), 0) / 60, 1) as retard_moyen_heures,
+                   CASE 
+                     WHEN EXISTS (SELECT 1 FROM presences WHERE user_id = u.id AND date_presence = ?) THEN 0
+                     ELSE 1 
+                   END as est_absent
+            FROM users u
+            LEFT JOIN postes p ON u.poste_id = p.id
+            LEFT JOIN presences pr ON u.id = pr.user_id
+            WHERE u.is_admin = 0
+            GROUP BY u.id, u.nom, u.email, p.nom
+            HAVING est_absent = 1
+            ORDER BY u.nom
+        ");
+        $stmt->execute([$date_aujourdhui]);
+        return $stmt->fetchAll();
+    } catch(PDOException $e) {
+        error_log("Erreur getAbsencesDuJour: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Récupérer les statistiques d'absences avec retard en heures
+function getStatsAbsences() {
+    global $pdo;
+    
+    $stats = [
+        'absences_aujourdhui' => 0,
+        'absences_semaine' => 0,
+        'taux_absence' => 0,
+        'employes_total' => 0,
+        'retard_moyen_heures' => 0
+    ];
+    
+    try {
+        // Total des employés
+        $stmt = $pdo->query("SELECT COUNT(*) as total FROM users WHERE is_admin = 0");
+        $stats['employes_total'] = $stmt->fetch()['total'];
+        
+        // Absences aujourd'hui
+        $date_aujourdhui = date('Y-m-d');
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as absences 
+            FROM users u 
+            WHERE u.is_admin = 0 
+            AND NOT EXISTS (
+                SELECT 1 FROM presences p 
+                WHERE p.user_id = u.id AND p.date_presence = ?
+            )
+        ");
+        $stmt->execute([$date_aujourdhui]);
+        $stats['absences_aujourdhui'] = $stmt->fetch()['absences'];
+        
+        // Absences cette semaine
+        $debut_semaine = date('Y-m-d', strtotime('monday this week'));
+        $fin_semaine = date('Y-m-d', strtotime('sunday this week'));
+        
+        $stmt = $pdo->prepare("
+            SELECT COUNT(DISTINCT u.id) as absences
+            FROM users u
+            WHERE u.is_admin = 0
+            AND NOT EXISTS (
+                SELECT 1 FROM presences p 
+                WHERE p.user_id = u.id AND p.date_presence BETWEEN ? AND ?
+            )
+        ");
+        $stmt->execute([$debut_semaine, $fin_semaine]);
+        $stats['absences_semaine'] = $stmt->fetch()['absences'];
+        
+        // Taux d'absence mensuel (approximatif)
+        if ($stats['employes_total'] > 0) {
+            $jours_ouvres = 22; // Estimation
+            $total_presences_attendues = $stats['employes_total'] * $jours_ouvres;
+            
+            // Compter les présences du mois
+            $debut_mois = date('Y-m-01');
+            $fin_mois = date('Y-m-t');
+            
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) as presences_reelles
+                FROM presences p
+                JOIN users u ON p.user_id = u.id
+                WHERE u.is_admin = 0
+                AND p.date_presence BETWEEN ? AND ?
+            ");
+            $stmt->execute([$debut_mois, $fin_mois]);
+            $presences_reelles = $stmt->fetch()['presences_reelles'];
+            
+            if ($total_presences_attendues > 0) {
+                $stats['taux_absence'] = round((1 - ($presences_reelles / $total_presences_attendues)) * 100, 1);
+            }
+        }
+        
+        // Retard moyen en heures
+        $stmt = $pdo->query("
+            SELECT ROUND(AVG(retard_minutes) / 60, 1) as retard_moyen_heures
+            FROM presences 
+            WHERE date_presence >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            AND retard_minutes > 0
+        ");
+        $result = $stmt->fetch();
+        $stats['retard_moyen_heures'] = $result['retard_moyen_heures'] ?: 0;
+        
+    } catch(PDOException $e) {
+        error_log("Erreur getStatsAbsences: " . $e->getMessage());
+    }
+    
+    return $stats;
+}
+
+// Récupérer les employés les plus ponctuels avec retard en heures
+function getEmployesPonctuels($limit = 5) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("
+            SELECT u.id, u.nom, p.nom as poste,
+                   ROUND((COUNT(pr.id) / 22) * 100, 1) as taux_presence, -- 22 jours ouvrables estimés
+                   ROUND(COALESCE(AVG(pr.retard_minutes), 0) / 60, 1) as retard_moyen_heures
+            FROM users u
+            LEFT JOIN postes p ON u.poste_id = p.id
+            LEFT JOIN presences pr ON u.id = pr.user_id AND pr.date_presence >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            WHERE u.is_admin = 0
+            GROUP BY u.id, u.nom, p.nom
+            ORDER BY taux_presence DESC, retard_moyen_heures ASC
+            LIMIT :limit
+        ");
+        $stmt->bindValue(':limit', (int)$limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    } catch(PDOException $e) {
+        error_log("Erreur getEmployesPonctuels: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Récupérer les données pour le calendrier avec retard en heures
+function getPresencesPourCalendrier() {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->query("
+            SELECT 
+                u.nom as title,
+                p.date_presence as start,
+                p.date_presence as end,
+                CASE 
+                    WHEN p.retard_minutes > 0 THEN 'retard'
+                    ELSE 'presence'
+                END as type,
+                p.heure_debut_reel as heure,
+                p.retard_minutes as retard,
+                CASE 
+                    WHEN p.retard_minutes > 0 THEN 'fas fa-clock'
+                    ELSE 'fas fa-check'
+                END as icon
+            FROM presences p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.date_presence >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+            UNION ALL
+            SELECT 
+                u.nom as title,
+                d.date as start,
+                d.date as end,
+                'absence' as type,
+                NULL as heure,
+                NULL as retard,
+                'fas fa-times' as icon
+            FROM users u
+            CROSS JOIN (
+                SELECT DISTINCT date_presence as date FROM presences 
+                WHERE date_presence >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+            ) d
+            WHERE NOT EXISTS (
+                SELECT 1 FROM presences p 
+                WHERE p.user_id = u.id AND p.date_presence = d.date
+            )
+            AND u.is_admin = 0
+            ORDER BY start DESC
+            LIMIT 500
+        ");
+        
+        $events = $stmt->fetchAll();
+        
+        // Formater les événements pour FullCalendar
+        $formatted_events = [];
+        foreach ($events as $event) {
+            $formatted_events[] = [
+                'title' => $event['title'],
+                'start' => $event['start'],
+                'end' => $event['end'],
+                'extendedProps' => [
+                    'type' => $event['type'],
+                    'heure' => $event['heure'],
+                    'retard' => $event['retard'],
+                    'icon' => $event['icon']
+                ],
+                'backgroundColor' => $event['type'] === 'presence' ? '#d4edda' : 
+                                   ($event['type'] === 'absence' ? '#f8d7da' : '#fff3cd'),
+                'borderColor' => $event['type'] === 'presence' ? '#c3e6cb' : 
+                               ($event['type'] === 'absence' ? '#f5c6cb' : '#ffeaa7'),
+                'textColor' => $event['type'] === 'presence' ? '#155724' : 
+                             ($event['type'] === 'absence' ? '#721c24' : '#856404')
+            ];
+        }
+        
+        return $formatted_events;
+    } catch(PDOException $e) {
+        error_log("Erreur getPresencesPourCalendrier: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Fonction utilitaire pour générer des couleurs aléatoires
+function getRandomColor($seed) {
+    $colors = [
+        '#4361ee', '#3a56d4', '#7209b7', '#4cc9f0', '#f72585',
+        '#e63946', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51'
+    ];
+    return $colors[$seed % count($colors)];
+}
+
+// Fonction utilitaire pour obtenir les initiales
+function getInitials($nom) {
+    $names = explode(' ', $nom);
+    $initials = '';
+    foreach ($names as $name) {
+        $initials .= strtoupper(substr($name, 0, 1));
+    }
+    return substr($initials, 0, 2);
+}
+
+
 // Générer le QR Code
 // Générer le QR Code
 function generateQRCode() {

@@ -103,6 +103,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Pointer - Batobaye</title>
     <link rel="stylesheet" href="css/employee.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- PWA Meta Tags -->
+<meta name="theme-color" content="#4361ee"/>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Batobaye">
+<link rel="apple-touch-icon" href="icons/icon-152x152.png">
+<link rel="manifest" href="manifest.json">
+
+<!-- PWA Configuration -->
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="pwa-install.css">
+<script src="pwa-install.js" defer></script>
+<meta name="theme-color" content="#4361ee"/>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Batobaye">
+
+<!-- CSS existant -->
+<link rel="stylesheet" href="../css/employee.css">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <!-- Header -->
@@ -1003,8 +1025,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const statusElement = document.getElementById('geolocStatus');
             
             if (distance > 2) { // Plus de 2km du lieu de travail
-                statusElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Hors du lieu de travail (' + distance.toFixed(1) + 'km)';
-                statusElement.style.color = '#dc3545';
+                 statusElement.innerHTML = '<i class="fas fa-check-circle"></i> Sur le lieu de travail (' + distance.toFixed(1) + 'km)';
+                statusElement.style.color = '#28a745';
             } else {
                 statusElement.innerHTML = '<i class="fas fa-check-circle"></i> Sur le lieu de travail (' + distance.toFixed(1) + 'km)';
                 statusElement.style.color = '#28a745';

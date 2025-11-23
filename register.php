@@ -67,6 +67,28 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscription - Batobaye</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- PWA Meta Tags -->
+<meta name="theme-color" content="#4361ee"/>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Batobaye">
+<link rel="apple-touch-icon" href="icons/icon-152x152.png">
+<link rel="manifest" href="manifest.json">
+
+<!-- PWA Configuration -->
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="pwa-install.css">
+<script src="pwa-install.js" defer></script>
+<meta name="theme-color" content="#4361ee"/>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Batobaye">
+
+<!-- CSS existant -->
+<link rel="stylesheet" href="../css/employee.css">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
             --primary: #4361ee;

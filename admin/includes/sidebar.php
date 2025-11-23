@@ -19,7 +19,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <span>Gestion des Utilisateurs</span>
         </a>
         
-        <!-- NOUVEAU : Gestion des Postes -->
         <a href="postes.php" class="menu-item <?php echo $current_page == 'postes.php' ? 'active' : ''; ?>">
             <i class="fas fa-briefcase"></i>
             <span>Gestion des Postes</span>
@@ -28,6 +27,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <a href="presences.php" class="menu-item <?php echo $current_page == 'presences.php' ? 'active' : ''; ?>">
             <i class="fas fa-clipboard-check"></i>
             <span>Suivi des Présences</span>
+        </a>
+        
+        <!-- NOUVEAU : Gestion des Absences -->
+        <a href="absences.php" class="menu-item <?php echo $current_page == 'absences.php' ? 'active' : ''; ?>">
+            <i class="fas fa-user-times"></i>
+            <span>Gestion des Absences</span>
         </a>
         
         <a href="qr_code.php" class="menu-item <?php echo $current_page == 'qr_code.php' ? 'active' : ''; ?>">
