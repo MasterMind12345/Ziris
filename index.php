@@ -26,18 +26,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user = $stmt->fetch();
             
             if ($user && password_verify($password, $user['password'])) {
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['user_name'] = $user['nom'];
-                $_SESSION['user_email'] = $user['email'];
-                $_SESSION['is_admin'] = $user['is_admin'];
                 
-                $success = "Connexion réussie ! Redirection...";
+                // VÉRIFICATION AVEC LE CACHE DU NAVIGATEUR
+                $accountLocked = false;
+                $lockedAccount = '';
                 
-                echo '<script>
-                    setTimeout(function() {
-                        window.location.href = "' . ($user['is_admin'] ? 'admin/index.php' : 'employee/dashboard.php') . '";
-                    }, 1000);
-                </script>';
+                // Vérifier si des informations sont déjà stockées dans le cache
+                if (isset($_COOKIE['batobaye_locked_account'])) {
+                    $lockedAccount = $_COOKIE['batobaye_locked_account'];
+                    
+                    // Si le compte essayé est différent du compte verrouillé
+                    if ($lockedAccount !== $email) {
+                        $accountLocked = true;
+                        $error = "Cet appareil est verrouillé pour le compte : " . htmlspecialchars($lockedAccount);
+                    }
+                }
+                
+                if (!$accountLocked) {
+                    // Première connexion ou même compte → STOCKER DANS LE CACHE
+                    setcookie('batobaye_locked_account', $email, time() + (365 * 24 * 60 * 60), '/');
+                    
+                    // Connexion réussie
+                    $_SESSION['user_id'] = $user['id'];
+                    $_SESSION['user_name'] = $user['nom'];
+                    $_SESSION['user_email'] = $user['email'];
+                    $_SESSION['is_admin'] = $user['is_admin'];
+                    
+                    $success = "Connexion réussie ! Redirection...";
+                    
+                    echo '<script>
+                        setTimeout(function() {
+                            window.location.href = "' . ($user['is_admin'] ? 'admin/index.php' : 'employee/dashboard.php') . '";
+                        }, 1000);
+                    </script>';
+                }
                 
             } else {
                 $error = "Email ou mot de passe incorrect.";
@@ -59,32 +81,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- PWA Meta Tags -->
-<meta name="theme-color" content="#4361ee"/>
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
-<link rel="apple-touch-icon" href="icons/icon-152x152.png">
-<link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4361ee"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Batobaye">
+    <link rel="apple-touch-icon" href="icons/icon-152x152.png">
+    <link rel="manifest" href="manifest.json">
 
-<!-- PWA Configuration -->
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="pwa-install.css">
-<script src="pwa-install.js" defer></script>
-<meta name="theme-color" content="#4361ee"/>
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+    <!-- PWA Configuration -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="pwa-install.css">
+    <script src="pwa-install.js" defer></script>
+    <meta name="theme-color" content="#4361ee"/>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Batobaye">
 
-<!-- CSS existant -->
-<link rel="stylesheet" href="../css/employee.css">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
             --primary: #4361ee;
             --primary-dark: #3a56d4;
             --secondary: #7209b7;
             --success: #4cc9f0;
+            --warning: #f72585;
+            --danger: #e63946;
             --light: #f8f9fa;
             --dark: #212529;
         }
@@ -111,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             width: 100%;
-            max-width: 400px;
+            max-width: 450px;
             overflow: hidden;
         }
 
@@ -142,6 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-bottom: 25px;
             text-align: center;
             font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
 
         .alert-error {
@@ -154,6 +179,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #efe;
             color: #363;
             border: 1px solid #dfd;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .device-blocked {
+            text-align: center;
+            padding: 30px 20px;
+        }
+
+        .device-icon {
+            font-size: 64px;
+            color: var(--warning);
+            margin-bottom: 20px;
+        }
+
+        .device-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid var(--warning);
+        }
+
+        .device-actions {
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
         }
 
         .form-group {
@@ -256,44 +332,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
         <div class="login-body">
-            <?php if ($error): ?>
-                <div class="alert alert-error">
-                    <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
-                </div>
-            <?php endif; ?>
-
-            <?php if ($success): ?>
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i> <?php echo $success; ?>
-                    <div class="loading"></div>
-                </div>
-            <?php endif; ?>
-
-            <form method="POST">
-                <div class="form-group">
-                    <label class="form-label">Adresse Email</label>
-                    <div class="input-group">
-                        <i class="fas fa-envelope input-icon"></i>
-                        <input type="email" name="email" class="form-control" placeholder="votre@email.com" required>
+            <?php 
+            // Vérifier si un compte est déjà verrouillé sur cet appareil
+            $accountLocked = false;
+            $lockedAccount = '';
+            
+            if (isset($_COOKIE['batobaye_locked_account'])) {
+                $lockedAccount = $_COOKIE['batobaye_locked_account'];
+                $accountLocked = true;
+            }
+            
+            if ($accountLocked && $_SERVER['REQUEST_METHOD'] !== 'POST'): ?>
+                <div class="device-blocked">
+                    <div class="device-icon">
+                        <i class="fas fa-lock"></i>
+                    </div>
+                    <h2>Appareil Verrouillé</h2>
+                    <p>Cet appareil est associé au compte :</p>
+                    
+                    <div class="device-info">
+                        <p><strong><?php echo htmlspecialchars($lockedAccount); ?></strong></p>
+                        <p><small>Vous ne pouvez utiliser que ce compte sur cet appareil.</small></p>
+                    </div>
+                    
+                    <div class="device-actions">
+                        <button onclick="showLoginForm()" class="btn btn-primary">
+                            <i class="fas fa-sign-in-alt"></i> Utiliser <?php echo htmlspecialchars(explode('@', $lockedAccount)[0]); ?>
+                        </button>
+                        <!-- <button onclick="resetDevice()" class="btn" style="background: #6c757d; color: white; margin-left: 10px;">
+                            <i class="fas fa-sync"></i> Réinitialiser
+                        </button> -->
                     </div>
                 </div>
+                
+                <div id="loginForm" style="display: none;">
+                    <?php if ($error): ?>
+                        <div class="alert alert-error">
+                            <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
+                        </div>
+                    <?php endif; ?>
 
-                <div class="form-group">
-                    <label class="form-label">Mot de Passe</label>
-                    <div class="input-group">
-                        <i class="fas fa-lock input-icon"></i>
-                        <input type="password" name="password" class="form-control" placeholder="Votre mot de passe" required>
-                    </div>
+                    <?php if ($success): ?>
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i> <?php echo $success; ?>
+                            <div class="loading"></div>
+                        </div>
+                    <?php endif; ?>
+
+                    <form method="POST">
+                        <div class="form-group">
+                            <label class="form-label">Adresse Email</label>
+                            <div class="input-group">
+                                <i class="fas fa-envelope input-icon"></i>
+                                <input type="email" name="email" class="form-control" value="<?php echo htmlspecialchars($lockedAccount); ?>" readonly style="background: #f8f9fa;">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Mot de Passe</label>
+                            <div class="input-group">
+                                <i class="fas fa-lock input-icon"></i>
+                                <input type="password" name="password" class="form-control" placeholder="Votre mot de passe" required>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-login">
+                            <i class="fas fa-sign-in-alt"></i> Se Connecter
+                        </button>
+                    </form>
                 </div>
+                
+                <script>
+                function showLoginForm() {
+                    document.getElementById('loginForm').style.display = 'block';
+                    document.querySelector('.device-actions').style.display = 'none';
+                }
+                
+                function resetDevice() {
+                    if (confirm('Êtes-vous sûr de vouloir réinitialiser cet appareil ?\n\nCela effacera le compte associé et permettra d\'utiliser un autre compte.')) {
+                        // Supprimer le cookie
+                        document.cookie = "batobaye_locked_account=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+                        // Recharger la page
+                        window.location.reload();
+                    }
+                }
+                </script>
+                
+            <?php else: ?>
+                <?php if ($error): ?>
+                    <div class="alert alert-error">
+                        <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
+                    </div>
+                <?php endif; ?>
 
-                <button type="submit" class="btn-login">
-                    <i class="fas fa-sign-in-alt"></i> Se Connecter
-                </button>
-            </form>
+                <?php if ($success): ?>
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle"></i> <?php echo $success; ?>
+                        <div class="loading"></div>
+                    </div>
+                <?php endif; ?>
 
-            <div class="login-footer">
-                <p>Nouvel employé ? <a href="register.php" class="register-link">Créer un compte</a></p>
-            </div>
+                <form method="POST">
+                    <div class="form-group">
+                        <label class="form-label">Adresse Email</label>
+                        <div class="input-group">
+                            <i class="fas fa-envelope input-icon"></i>
+                            <input type="email" name="email" class="form-control" placeholder="votre@email.com" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Mot de Passe</label>
+                        <div class="input-group">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input type="password" name="password" class="form-control" placeholder="Votre mot de passe" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-login">
+                        <i class="fas fa-sign-in-alt"></i> Se Connecter
+                    </button>
+                </form>
+
+                <div class="login-footer">
+                    <p>Nouvel employé ? <a href="register.php" class="register-link">Créer un compte</a></p>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </body>
