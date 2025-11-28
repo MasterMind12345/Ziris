@@ -2,7 +2,6 @@
 session_start();
 require_once '../config/database.php';
 
-// Vérifier si l'utilisateur est connecté et n'est pas admin
 if (!isset($_SESSION['user_id']) || $_SESSION['is_admin']) {
     header('Location: ../index.php');
     exit;
@@ -10,7 +9,6 @@ if (!isset($_SESSION['user_id']) || $_SESSION['is_admin']) {
 
 $user_id = $_SESSION['user_id'];
 
-// Récupérer les informations de l'utilisateur
 try {
     $stmt = $pdo->prepare("
         SELECT u.*, p.nom as poste_nom, p.description as poste_description 
@@ -24,7 +22,6 @@ try {
     die("Erreur de base de données.");
 }
 
-// Récupérer la présence du jour
 try {
     $stmt = $pdo->prepare("SELECT * FROM presences WHERE user_id = ? AND date_presence = CURDATE()");
     $stmt->execute([$user_id]);
@@ -33,9 +30,7 @@ try {
     $presence_aujourdhui = null;
 }
 
-// Récupérer les statistiques
 try {
-    // Présences ce mois
     $stmt = $pdo->prepare("
         SELECT COUNT(*) as count 
         FROM presences 
@@ -46,7 +41,6 @@ try {
     $stmt->execute([$user_id]);
     $presences_mois = $stmt->fetch()['count'];
 
-    // Retards ce mois
     $stmt = $pdo->prepare("
         SELECT COUNT(*) as count 
         FROM presences 
@@ -58,7 +52,6 @@ try {
     $stmt->execute([$user_id]);
     $retards_mois = $stmt->fetch()['count'];
 
-    // Heures travaillées ce mois (approximatif)
     $stmt = $pdo->prepare("
         SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(heure_fin_reel, heure_debut_reel)))) as total_heures
         FROM presences 
@@ -91,12 +84,12 @@ try {
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Batobaye">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/manifest.json">
 
 <!-- PWA Configuration -->
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="pwa-install.css">
-<script src="pwa-install.js" defer></script>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/pwa-install.css">
+<script src="/pwa-install.js" defer></script>
 <meta name="theme-color" content="#4361ee"/>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">

@@ -22,26 +22,26 @@ $users = getAllUsers();
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
     <!-- PWA Meta Tags -->
-<meta name="theme-color" content="#4361ee"/>
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
-<link rel="apple-touch-icon" href="icons/icon-152x152.png">
-<link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4361ee"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Batobaye">
+    <link rel="apple-touch-icon" href="icons/icon-152x152.png">
+    <link rel="manifest" href="/manifest.json">
 
-<!-- PWA Configuration -->
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="pwa-install.css">
-<script src="pwa-install.js" defer></script>
-<meta name="theme-color" content="#4361ee"/>
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+    <!-- PWA Configuration -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/pwa-install.css">
+    <script src="/pwa-install.js" defer></script>
+    <meta name="theme-color" content="#4361ee"/>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Batobaye">
 
-<!-- CSS existant -->
-<link rel="stylesheet" href="../css/employee.css">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- CSS existant -->
+    <link rel="stylesheet" href="../css/employee.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <?php include 'includes/header.php'; ?>
@@ -52,6 +52,21 @@ $users = getAllUsers();
             <h1>Gestion des Utilisateurs</h1>
             <p>Gérez les comptes des employés de l'entreprise</p>
         </div>
+
+        <!-- Messages de confirmation -->
+        <?php if (isset($_SESSION['success'])): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i>
+                <?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['error'])): ?>
+            <div class="alert alert-error">
+                <i class="fas fa-exclamation-circle"></i>
+                <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
+            </div>
+        <?php endif; ?>
         
         <div class="table-container">
             <div class="table-header">
@@ -90,10 +105,10 @@ $users = getAllUsers();
                         </td>
                         <td><?php echo date('d/m/Y', strtotime($user['created_at'])); ?></td>
                         <td>
-                            <button class="btn btn-secondary btn-sm">
+                            <button class="btn btn-secondary btn-sm" onclick="editUser(<?php echo $user['id']; ?>)">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            <button class="btn btn-danger btn-sm">
+                            <button class="btn btn-danger btn-sm" onclick="deleteUser(<?php echo $user['id']; ?>, '<?php echo htmlspecialchars(addslashes($user['nom'])); ?>')">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </td>
@@ -105,5 +120,57 @@ $users = getAllUsers();
     </main>
     
     <script src="js/script.js"></script>
+    <script>
+        // Fonction pour supprimer un utilisateur
+        function deleteUser(userId, userName) {
+            if (confirm(`Êtes-vous sûr de vouloir supprimer l'utilisateur "${userName}" ?\n\nCette action est irréversible et supprimera également toutes ses données de présence.`)) {
+                // Créer un formulaire pour envoyer la requête
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = 'delete_user.php';
+                
+                const userIdInput = document.createElement('input');
+                userIdInput.type = 'hidden';
+                userIdInput.name = 'user_id';
+                userIdInput.value = userId;
+                
+                form.appendChild(userIdInput);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+
+        // Fonction pour éditer un utilisateur (à implémenter)
+        function editUser(userId) {
+            alert('Fonction d\'édition à implémenter pour l\'utilisateur ID: ' + userId);
+            // window.location.href = `edit_user.php?id=${userId}`;
+        }
+
+        // Fonction de recherche dans le tableau
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.querySelector('.table-search');
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    const searchTerm = this.value.toLowerCase();
+                    const table = document.getElementById('usersTable');
+                    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+                    
+                    for (let row of rows) {
+                        const cells = row.getElementsByTagName('td');
+                        let found = false;
+                        
+                        for (let cell of cells) {
+                            if (cell.textContent.toLowerCase().includes(searchTerm)) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        
+                        row.style.display = found ? '' : 'none';
+                    }
+                });
+            }
+        });
+    </script>
 </body>
 </html>

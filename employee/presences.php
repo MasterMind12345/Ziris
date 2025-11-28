@@ -2,7 +2,6 @@
 session_start();
 require_once '../config/database.php';
 
-// Vérifier si l'utilisateur est connecté et n'est pas admin
 if (!isset($_SESSION['user_id']) || $_SESSION['is_admin']) {
     header('Location: ../index.php');
     exit;
@@ -10,7 +9,6 @@ if (!isset($_SESSION['user_id']) || $_SESSION['is_admin']) {
 
 $user_id = $_SESSION['user_id'];
 
-// Récupérer les informations de l'utilisateur
 try {
     $stmt = $pdo->prepare("SELECT u.*, p.nom as poste_nom FROM users u LEFT JOIN postes p ON u.poste_id = p.id WHERE u.id = ?");
     $stmt->execute([$user_id]);
@@ -19,11 +17,9 @@ try {
     die("Erreur de base de données.");
 }
 
-// Déterminer la période
 $period = $_GET['period'] ?? 'monthly';
 $date = $_GET['date'] ?? date('Y-m-d');
 
-// Récupérer les présences selon la période
 try {
     switch ($period) {
         case 'daily':
@@ -66,19 +62,15 @@ try {
     $presences = [];
 }
 
-// Statistiques
 try {
-    // Total des présences
     $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM presences WHERE user_id = ?");
     $stmt->execute([$user_id]);
     $total_presences = $stmt->fetch()['total'];
     
-    // Jours de retard
     $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM presences WHERE user_id = ? AND retard_minutes > 0");
     $stmt->execute([$user_id]);
     $total_retards = $stmt->fetch()['total'];
     
-    // Heures totales travaillées
     $stmt = $pdo->prepare("
         SELECT SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(heure_fin_reel, heure_debut_reel)))) as total_heures
         FROM presences 
@@ -108,12 +100,12 @@ try {
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Batobaye">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/manifest.json">
 
 <!-- PWA Configuration -->
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="pwa-install.css">
-<script src="pwa-install.js" defer></script>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/pwa-install.css">
+<script src="/pwa-install.js" defer></script>
 <meta name="theme-color" content="#4361ee"/>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">

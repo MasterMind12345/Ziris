@@ -102,3 +102,28 @@ function exportToCSV(tableId, filename) {
     downloadLink.click();
     document.body.removeChild(downloadLink);
 }
+
+// Fonction pour supprimer un utilisateur
+function deleteUser(userId, userName) {
+    if (confirm(`Êtes-vous sûr de vouloir supprimer l'utilisateur "${userName}" ?\n\nCette action est irréversible et supprimera également toutes ses données de présence.`)) {
+        // Créer un formulaire pour envoyer la requête
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'delete_user.php';
+        
+        const userIdInput = document.createElement('input');
+        userIdInput.type = 'hidden';
+        userIdInput.name = 'user_id';
+        userIdInput.value = userId;
+        
+        form.appendChild(userIdInput);
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// Fonction pour éditer un utilisateur
+function editUser(userId) {
+    alert('Fonction d\'édition à implémenter pour l\'utilisateur ID: ' + userId);
+    // window.location.href = `edit_user.php?id=${userId}`;
+}

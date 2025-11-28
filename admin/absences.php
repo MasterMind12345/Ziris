@@ -39,7 +39,7 @@ $presences_calendrier = getPresencesPourCalendrier();
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Batobaye">
     <link rel="apple-touch-icon" href="icons/icon-152x152.png">
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="/manifest.json">
 </head>
 <body>
     <?php include 'includes/header.php'; ?>

@@ -37,7 +37,7 @@ if ($admin && isset($admin['nom'])) {
                     <i class="fas fa-history"></i> Historique
                 </a>
                 <div class="dropdown-divider"></div>
-                <a href="../logout.php" class="dropdown-item text-danger">
+                <a href="../logout2.php" class="dropdown-item text-danger">
                     <i class="fas fa-sign-out-alt"></i> Déconnexion
                 </a>
             </div>

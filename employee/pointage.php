@@ -2,7 +2,6 @@
 session_start();
 require_once '../config/database.php';
 
-// Vérifier si l'utilisateur est connecté et n'est pas admin
 if (!isset($_SESSION['user_id']) || $_SESSION['is_admin']) {
     header('Location: ../index.php');
     exit;
@@ -10,7 +9,6 @@ if (!isset($_SESSION['user_id']) || $_SESSION['is_admin']) {
 
 $user_id = $_SESSION['user_id'];
 
-// Récupérer les informations de l'utilisateur
 try {
     $stmt = $pdo->prepare("SELECT u.*, p.nom as poste_nom FROM users u LEFT JOIN postes p ON u.poste_id = p.id WHERE u.id = ?");
     $stmt->execute([$user_id]);
@@ -19,7 +17,6 @@ try {
     die("Erreur de base de données.");
 }
 
-// Vérifier le pointage du jour
 try {
     $stmt = $pdo->prepare("SELECT * FROM presences WHERE user_id = ? AND date_presence = CURDATE()");
     $stmt->execute([$user_id]);
@@ -28,7 +25,6 @@ try {
     $presence_aujourdhui = null;
 }
 
-// Récupérer les paramètres système
 try {
     $stmt = $pdo->query("SELECT * FROM parametres_systeme WHERE id = 1");
     $parametres = $stmt->fetch();
@@ -39,13 +35,11 @@ try {
 $message = '';
 $message_type = '';
 
-// Traitement du pointage
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
     try {
         if ($action === 'debut' && !$presence_aujourdhui) {
-            // Géolocalisation
             $lieu = "Bureau"; // Par défaut
             if (isset($_POST['latitude']) && isset($_POST['longitude'])) {
                 // Ici on pourrait utiliser l'API Google Maps pour obtenir l'adresse
@@ -54,7 +48,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $heure_debut = date('H:i:s');
             
-            // Calcul du retard
             $retard_minutes = 0;
             if ($heure_debut > $parametres['heure_debut_normal']) {
                 $diff = strtotime($heure_debut) - strtotime($parametres['heure_debut_normal']);
@@ -84,7 +77,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message_type = 'error';
         }
         
-        // Recharger les données
         $stmt = $pdo->prepare("SELECT * FROM presences WHERE user_id = ? AND date_presence = CURDATE()");
         $stmt->execute([$user_id]);
         $presence_aujourdhui = $stmt->fetch();
@@ -104,30 +96,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="css/employee.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 
-    <!-- PWA Meta Tags -->
 <meta name="theme-color" content="#4361ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Batobaye">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/manifest.json">
 
-<!-- PWA Configuration -->
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="pwa-install.css">
-<script src="pwa-install.js" defer></script>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/pwa-install.css">
+<script src="/pwa-install.js" defer></script>
 <meta name="theme-color" content="#4361ee"/>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Batobaye">
 
-<!-- CSS existant -->
 <link rel="stylesheet" href="../css/employee.css">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-    <!-- Header -->
+
     <header class="employee-header">
         <div class="header-content">
             <div class="header-left">
@@ -159,7 +148,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </header>
 
-    <!-- Navigation -->
     <nav class="employee-nav">
         <div class="nav-content">
             <a href="dashboard.php" class="nav-item">

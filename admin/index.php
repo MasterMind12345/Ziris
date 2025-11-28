@@ -3,19 +3,16 @@ session_start();
 require_once '../config/database.php';
 require_once 'includes/functions.php';
 
-// Vérifier si l'utilisateur est connecté et est admin
 if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
     header('Location: ../login.php');
     exit;
 }
 
-// Vérifier si les tables de la base de données existent
 $missing_tables = checkDatabaseTables();
 if (!empty($missing_tables)) {
     $error_message = "Tables manquantes dans la base de données: " . implode(', ', $missing_tables);
 }
 
-// Récupérer les statistiques pour le dashboard
 $stats = getDashboardStats();
 ?>
 <!DOCTYPE html>
@@ -33,12 +30,12 @@ $stats = getDashboardStats();
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Batobaye">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/manifest.json">
 
 <!-- PWA Configuration -->
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="pwa-install.css">
-<script src="pwa-install.js" defer></script>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/pwa-install.css">
+<script src="/pwa-install.js" defer></script>
 <meta name="theme-color" content="#4361ee"/>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">

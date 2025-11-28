@@ -3,12 +3,12 @@ session_start();
 
 // Vérifier si la base de données existe
 try {
-    $pdo = new PDO("mysql:host=localhost", 'root', '');
+    $pdo = new PDO("mysql:host=localhost", 'globall1_tonton', 'F4t5sef8');
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
     // Créer la base de données si elle n'existe pas
-    $pdo->exec("CREATE DATABASE IF NOT EXISTS systeme_presence");
-    $pdo->exec("USE systeme_presence");
+    $pdo->exec("CREATE DATABASE IF NOT EXISTS globall1_batobaye");
+    $pdo->exec("USE globall1_batobaye");
 } catch(PDOException $e) {
     die("Erreur de connexion: " . $e->getMessage());
 }
