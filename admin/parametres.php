@@ -3,23 +3,19 @@ session_start();
 require_once '../config/database.php';
 require_once 'includes/functions.php';
 
-// Vérifier si l'utilisateur est connecté et est admin
 if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
     header('Location: ../login.php');
     exit;
 }
 
-// Récupérer les paramètres actuels
 $settings = getSystemSettings();
 
-// Traitement du formulaire
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $heure_debut = $_POST['heure_debut_normal'] ?? '';
     $heure_fin = $_POST['heure_fin_normal'] ?? '';
     
     if (updateSystemSettings($heure_debut, $heure_fin)) {
         $success_message = "Paramètres mis à jour avec succès!";
-        // Recharger les paramètres
         $settings = getSystemSettings();
     } else {
         $error_message = "Erreur lors de la mise à jour des paramètres.";
@@ -31,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Paramètres - Batobaye Admin</title>
+    <title>Paramètres - Ziris Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
@@ -39,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="theme-color" content="#4361ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
 <link rel="manifest" href="/manifest.json">
 
@@ -51,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 
 <!-- CSS existant -->
 <link rel="stylesheet" href="../css/employee.css">
@@ -112,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="system-info">
                 <div class="info-item">
                     <label>Version de l'application:</label>
-                    <span>Batobaye v1.0.0</span>
+                    <span>Ziris v1.0.0</span>
                 </div>
                 
                 <div class="info-item">

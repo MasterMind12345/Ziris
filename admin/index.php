@@ -20,7 +20,7 @@ $stats = getDashboardStats();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Batobaye Admin</title>
+    <title>Dashboard - Ziris Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
@@ -28,7 +28,7 @@ $stats = getDashboardStats();
 <meta name="theme-color" content="#4361ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
 <link rel="manifest" href="/manifest.json">
 
@@ -40,7 +40,7 @@ $stats = getDashboardStats();
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 
 <!-- CSS existant -->
 <link rel="stylesheet" href="../css/employee.css">
@@ -53,7 +53,7 @@ $stats = getDashboardStats();
     <main class="main-content">
         <div class="page-header">
             <h1>Tableau de Bord</h1>
-            <p>Bienvenue dans l'interface d'administration Batobaye</p>
+            <p>Bienvenue dans l'interface d'administration Ziris</p>
         </div>
         
         <?php if (isset($error_message)): ?>

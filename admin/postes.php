@@ -98,7 +98,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion des Postes - Batobaye Admin</title>
+    <title>Gestion des Postes - Ziris Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
@@ -106,7 +106,7 @@ try {
 <meta name="theme-color" content="#4361ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
 <link rel="manifest" href="/manifest.json">
 
@@ -118,7 +118,7 @@ try {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 
 <!-- CSS existant -->
 <link rel="stylesheet" href="../css/employee.css">

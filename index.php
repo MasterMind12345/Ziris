@@ -77,14 +77,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connexion Employé - Batobaye</title>
+    <title>Connexion Employé - Ziris</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#4361ee"/>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Batobaye">
+    <meta name="apple-mobile-web-app-title" content="Ziris">
     <link rel="apple-touch-icon" href="icons/icon-152x152.png">
     <link rel="manifest" href="manifest.json">
 
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Batobaye">
+    <meta name="apple-mobile-web-app-title" content="Ziris">
 
     <style>
         :root {
@@ -327,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="logo">
                 <i class="fas fa-fingerprint"></i>
             </div>
-            <h1>Batobaye</h1>
+            <h1>Ziris</h1>
             <p>Espace Employé</p>
         </div>
 

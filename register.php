@@ -65,14 +65,14 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inscription - Batobaye</title>
+    <title>Inscription - Zirise</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- PWA Meta Tags -->
 <meta name="theme-color" content="#4361ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
 <link rel="manifest" href="manifest.json">
 
@@ -84,7 +84,7 @@ try {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 
 <!-- CSS existant -->
 <link rel="stylesheet" href="../css/employee.css">
@@ -266,7 +266,7 @@ try {
                 <i class="fas fa-user-plus"></i>
             </div>
             <h1>Créer un Compte</h1>
-            <p>Rejoignez Batobaye</p>
+            <p>Rejoignez Ziris</p>
         </div>
 
         <div class="register-body">

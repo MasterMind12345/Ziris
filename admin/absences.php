@@ -3,22 +3,17 @@ session_start();
 require_once '../config/database.php';
 require_once 'includes/functions.php';
 
-// Vérifier si l'utilisateur est connecté et est admin
 if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
     header('Location: ../login.php');
     exit;
 }
 
-// Récupérer les absences du jour
 $absences_du_jour = getAbsencesDuJour();
 
-// Récupérer les statistiques d'absences
 $stats_absences = getStatsAbsences();
 
-// Récupérer les employés les plus ponctuels
 $employes_ponctuels = getEmployesPonctuels();
 
-// Récupérer les données pour le calendrier (toutes les présences/absences)
 $presences_calendrier = getPresencesPourCalendrier();
 ?>
 <!DOCTYPE html>
@@ -26,7 +21,7 @@ $presences_calendrier = getPresencesPourCalendrier();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion des Absences - Batobaye Admin</title>
+    <title>Gestion des Absences - Ziris Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
@@ -37,7 +32,7 @@ $presences_calendrier = getPresencesPourCalendrier();
     <meta name="theme-color" content="#4361ee"/>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Batobaye">
+    <meta name="apple-mobile-web-app-title" content="Ziris">
     <link rel="apple-touch-icon" href="icons/icon-152x152.png">
     <link rel="manifest" href="/manifest.json">
 </head>
@@ -101,7 +96,7 @@ $presences_calendrier = getPresencesPourCalendrier();
                     <h2>Absences du jour (<?php echo date('d/m/Y'); ?>)</h2>
                     <div class="table-actions">
                         <input type="text" class="form-control table-search" placeholder="Rechercher..." id="searchAbsences">
-                        <button class="btn btn-primary" onclick="exportToCSV('absencesTable', 'absences-batobaye.csv')">
+                        <button class="btn btn-primary" onclick="exportToCSV('absencesTable', 'absences-ziris.csv')">
                             <i class="fas fa-download"></i> Exporter
                         </button>
                     </div>

@@ -3,13 +3,11 @@ session_start();
 require_once '../config/database.php';
 require_once 'includes/functions.php';
 
-// Vérifier si l'utilisateur est admin
 if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
     header('Location: ../login.php');
     exit;
 }
 
-// Récupérer tous les appareils
 $stmt = $pdo->query("
     SELECT ud.*, u.nom, u.email 
     FROM user_devices ud 
@@ -18,7 +16,6 @@ $stmt = $pdo->query("
 ");
 $devices = $stmt->fetchAll();
 
-// Désactiver un appareil
 if (isset($_POST['deactivate_device'])) {
     $deviceId = $_POST['device_id'];
     $stmt = $pdo->prepare("UPDATE user_devices SET is_active = 0 WHERE id = ?");
@@ -27,7 +24,6 @@ if (isset($_POST['deactivate_device'])) {
     exit;
 }
 
-// Activer un appareil
 if (isset($_POST['activate_device'])) {
     $deviceId = $_POST['device_id'];
     $stmt = $pdo->prepare("UPDATE user_devices SET is_active = 1 WHERE id = ?");
@@ -42,7 +38,7 @@ if (isset($_POST['activate_device'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion des Appareils - Batobaye Admin</title>
+    <title>Gestion des Appareils - Ziris Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>

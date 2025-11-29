@@ -1,20 +1,20 @@
-// sw.js - Version avec URLs absolues
-const CACHE_NAME = 'batobaye-v1.0.1';
+// sw.js - Version avec URLs absolues pour Ziris
+const CACHE_NAME = 'ziris-v1.0.1';
 const urlsToCache = [
-  'https://batobaye.global-logistique.com/batobaye/',
-  'https://batobaye.global-logistique.com/batobaye/index.php',
-  'https://batobaye.global-logistique.com/batobaye/login.php',
-  'https://batobaye.global-logistique.com/batobaye/employee/dashboard.php',
-  'https://batobaye.global-logistique.com/batobaye/employee/pointage.php',
-  'https://batobaye.global-logistique.com/batobaye/employee/presences.php',
-  'https://batobaye.global-logistique.com/batobaye/employee/aide.php',
-  'https://batobaye.global-logistique.com/batobaye/css/employee.css',
-  'https://batobaye.global-logistique.com/batobaye/pwa-install.css',
-  'https://batobaye.global-logistique.com/batobaye/pwa-install.js',
-  'https://batobaye.global-logistique.com/batobaye/manifest.json',
-  'https://batobaye.global-logistique.com/batobaye/icons/icon-72x72.png',
-  'https://batobaye.global-logistique.com/batobaye/icons/icon-192x192.png',
-  'https://batobaye.global-logistique.com/batobaye/icons/icon-512x512.png',
+  'https://ziris.global-logistique.com/',
+  'https://ziris.global-logistique.com/index.php',
+  'https://ziris.global-logistique.com/login.php',
+  'https://ziris.global-logistique.com/employee/dashboard.php',
+  'https://ziris.global-logistique.com/employee/pointage.php',
+  'https://ziris.global-logistique.com/employee/presences.php',
+  'https://ziris.global-logistique.com/employee/aide.php',
+  'https://ziris.global-logistique.com/css/employee.css',
+  'https://ziris.global-logistique.com/pwa-install.css',
+  'https://ziris.global-logistique.com/pwa-install.js',
+  'https://ziris.global-logistique.com/manifest.json',
+  'https://ziris.global-logistique.com/icons/icon-72x72.png',
+  'https://ziris.global-logistique.com/icons/icon-192x192.png',
+  'https://ziris.global-logistique.com/icons/icon-512x512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
 ];
 
@@ -24,7 +24,7 @@ self.addEventListener('install', function(event) {
     caches.open(CACHE_NAME)
       .then(function(cache) {
         console.log('Cache ouvert, ajout des URLs...');
-        return cache.addAll(urlsToCache).catch(error => {
+        return cache.addAll(urlsToCache).catch(error => {g
           console.log('Erreur cache.addAll:', error);
         });
       })
@@ -85,7 +85,7 @@ self.addEventListener('fetch', function(event) {
                 <!DOCTYPE html>
                 <html>
                   <head>
-                    <title>Batobaye - Hors ligne</title>
+                    <title>Ziris - Hors ligne</title>
                     <meta charset="UTF-8">
                     <style>
                       body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
@@ -94,7 +94,7 @@ self.addEventListener('fetch', function(event) {
                   </head>
                   <body>
                     <div class="offline">
-                      <h1>📱 Batobaye</h1>
+                      <h1>📱 Ziris</h1>
                       <p>Vous êtes actuellement hors ligne</p>
                       <p>Certaines fonctionnalités ne sont pas disponibles</p>
                     </div>

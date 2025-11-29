@@ -3,19 +3,16 @@ session_start();
 require_once '../config/database.php';
 require_once 'includes/functions.php';
 
-// Vérifier si l'utilisateur est connecté et est admin
 if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
     header('Location: ../login.php');
     exit;
 }
 
-// Récupérer les informations de l'admin
 $admin_id = $_SESSION['user_id'];
 $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
 $stmt->execute([$admin_id]);
 $admin = $stmt->fetch();
 
-// Traitement du formulaire de mise à jour
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nom = $_POST['nom'] ?? '';
     $email = $_POST['email'] ?? '';
@@ -23,7 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $new_password = $_POST['new_password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
     
-    // Vérifier le mot de passe actuel si changement demandé
     if (!empty($new_password)) {
         if (password_verify($current_password, $admin['password'])) {
             if ($new_password === $confirm_password) {
@@ -37,14 +33,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_message = "Mot de passe actuel incorrect.";
         }
     } else {
-        // Mise à jour sans changer le mot de passe
         $stmt = $pdo->prepare("UPDATE users SET nom = ?, email = ? WHERE id = ?");
         $success = $stmt->execute([$nom, $email, $admin_id]);
     }
     
     if (isset($success) && $success) {
         $success_message = "Profil mis à jour avec succès!";
-        // Recharger les données
         $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
         $stmt->execute([$admin_id]);
         $admin = $stmt->fetch();
@@ -58,14 +52,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profil Admin - Batobaye Admin</title>
+    <title>Profil Admin - Ziris Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- PWA Meta Tags -->
 <meta name="theme-color" content="#4361ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
 <link rel="manifest" href="/manifest.json">
 
@@ -78,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 
 <!-- CSS existant -->
 <link rel="stylesheet" href="../css/employee.css">

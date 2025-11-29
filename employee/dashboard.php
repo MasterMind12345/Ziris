@@ -9,6 +9,29 @@ if (!isset($_SESSION['user_id']) || $_SESSION['is_admin']) {
 
 $user_id = $_SESSION['user_id'];
 
+// Récupérer les préférences utilisateur (comme dans param.php)
+try {
+    $stmt = $pdo->prepare("SELECT * FROM user_preferences WHERE user_id = ?");
+    $stmt->execute([$user_id]);
+    $preferences = $stmt->fetch();
+    
+    if (!$preferences) {
+        // Créer des préférences par défaut
+        $stmt = $pdo->prepare("INSERT INTO user_preferences (user_id, theme, font_size, notifications, accessibility_mode) VALUES (?, 'light', 'medium', 1, 0)");
+        $stmt->execute([$user_id]);
+        // Re-récupérer les préférences après insertion
+        $stmt = $pdo->prepare("SELECT * FROM user_preferences WHERE user_id = ?");
+        $stmt->execute([$user_id]);
+        $preferences = $stmt->fetch();
+    }
+} catch(PDOException $e) {
+    // Si la table n'existe pas, utiliser des valeurs par défaut
+    $preferences = ['theme' => 'light', 'font_size' => 'medium', 'notifications' => 1, 'accessibility_mode' => 0];
+}
+
+// Déterminer le thème actuel pour l'affichage
+$currentTheme = $preferences['theme'] ?? 'light';
+
 try {
     $stmt = $pdo->prepare("
         SELECT u.*, p.nom as poste_nom, p.description as poste_description 
@@ -70,42 +93,34 @@ try {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="<?php echo $currentTheme; ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tableau de Bord - Batobaye</title>
-    <link rel="stylesheet" href="css/employee.css">
+    <title>Tableau de Bord - Ziris</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 
     <!-- PWA Meta Tags -->
-<meta name="theme-color" content="#4361ee"/>
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
-<link rel="apple-touch-icon" href="icons/icon-152x152.png">
-<link rel="manifest" href="/manifest.json">
-
-<!-- PWA Configuration -->
-<link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/pwa-install.css">
-<script src="/pwa-install.js" defer></script>
-<meta name="theme-color" content="#4361ee"/>
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
-
-<!-- CSS existant -->
-<link rel="stylesheet" href="../css/employee.css">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <meta name="theme-color" content="#4361ee"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ziris">
+    <link rel="apple-touch-icon" href="icons/icon-152x152.png">
+    
+    <meta name="theme-color" content="#4361ee"/>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ziris">
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <!-- Header -->
     <header class="employee-header">
         <div class="header-content">
             <div class="header-left">
-                <h1><i class="fas fa-fingerprint"></i> Batobaye</h1>
+                <h1><i class="fas fa-fingerprint"></i>Ziris</h1>
                 <span class="user-role">Espace Employé</span>
             </div>
             <div class="header-right">
@@ -148,9 +163,14 @@ try {
                 <i class="fas fa-qrcode"></i>
                 <span>Pointer</span>
             </a>
+
             <a href="aide.php" class="nav-item">
                 <i class="fas fa-question-circle"></i>
                 <span>Aide</span>
+            </a>
+             <a href="param.php" class="nav-item">
+                <i class="fas fa-cog"></i>
+                <span>Paramètres</span>
             </a>
         </div>
     </nav>
@@ -160,7 +180,7 @@ try {
         <div class="welcome-section">
             <div class="welcome-content">
                 <h1>Bonjour, <?php echo htmlspecialchars($user['nom']); ?> !</h1>
-                <p>Bienvenue sur votre tableau de bord Batobaye</p>
+                <p>Bienvenue sur votre tableau de bord Ziris</p>
                 <div class="current-time">
                     <i class="fas fa-clock"></i>
                     <span id="liveClock"><?php echo date('H:i:s'); ?></span>
@@ -417,7 +437,7 @@ try {
     </script>
 
     <style>
-        /* CSS pour l'interface employé */
+        /* Variables CSS pour les thèmes */
         :root {
             --primary: #4361ee;
             --primary-dark: #3a56d4;
@@ -431,24 +451,44 @@ try {
             --border-radius: 12px;
             --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             --transition: all 0.3s ease;
+            
+            /* Variables pour le thème clair */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-card: #ffffff;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --border-color: #e9ecef;
+        }
+
+        /* Thème sombre */
+        [data-theme="dark"] {
+            --bg-primary: #121212;
+            --bg-secondary: #1e1e1e;
+            --bg-card: #2d2d2d;
+            --text-primary: #f8f9fa;
+            --text-secondary: #adb5bd;
+            --border-color: #404040;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
         }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f7fb;
-            color: var(--dark);
+            background: var(--bg-primary);
+            color: var(--text-primary);
             line-height: 1.6;
         }
 
         /* Header */
         .employee-header {
-            background: white;
+            background: var(--bg-card);
             box-shadow: var(--shadow);
             position: sticky;
             top: 0;
@@ -514,15 +554,16 @@ try {
         .user-name {
             font-weight: 600;
             font-size: 14px;
+            color: var(--text-primary);
         }
 
         .user-poste {
             font-size: 12px;
-            color: var(--gray);
+            color: var(--text-secondary);
         }
 
         .logout-btn {
-            color: var(--gray);
+            color: var(--text-secondary);
             text-decoration: none;
             font-size: 18px;
             transition: var(--transition);
@@ -534,8 +575,8 @@ try {
 
         /* Navigation */
         .employee-nav {
-            background: white;
-            border-bottom: 1px solid #e9ecef;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
         }
 
         .nav-content {
@@ -550,7 +591,7 @@ try {
             align-items: center;
             gap: 8px;
             padding: 15px 20px;
-            color: var(--gray);
+            color: var(--text-secondary);
             text-decoration: none;
             transition: var(--transition);
             border-bottom: 3px solid transparent;
@@ -566,6 +607,7 @@ try {
             max-width: 1200px;
             margin: 0 auto;
             padding: 30px;
+            background: var(--bg-primary);
         }
 
         /* Welcome Section */
@@ -579,11 +621,11 @@ try {
         .welcome-content h1 {
             font-size: 32px;
             margin-bottom: 10px;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .welcome-content p {
-            color: var(--gray);
+            color: var(--text-secondary);
             margin-bottom: 20px;
         }
 
@@ -597,13 +639,13 @@ try {
         }
 
         .current-time .date {
-            color: var(--gray);
+            color: var(--text-secondary);
             font-size: 14px;
             font-weight: normal;
         }
 
         .profile-card {
-            background: white;
+            background: var(--bg-card);
             border-radius: var(--border-radius);
             padding: 25px;
             box-shadow: var(--shadow);
@@ -627,6 +669,7 @@ try {
 
         .profile-info h3 {
             margin-bottom: 5px;
+            color: var(--text-primary);
         }
 
         .profile-poste {
@@ -636,7 +679,7 @@ try {
         }
 
         .profile-email {
-            color: var(--gray);
+            color: var(--text-secondary);
             font-size: 14px;
         }
 
@@ -648,6 +691,7 @@ try {
         .stats-section h2 {
             margin-bottom: 20px;
             font-size: 24px;
+            color: var(--text-primary);
         }
 
         .stats-grid {
@@ -657,7 +701,7 @@ try {
         }
 
         .stat-card {
-            background: white;
+            background: var(--bg-card);
             border-radius: var(--border-radius);
             padding: 25px;
             box-shadow: var(--shadow);
@@ -669,6 +713,7 @@ try {
 
         .stat-card:hover {
             transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
         }
 
         .stat-icon {
@@ -680,6 +725,7 @@ try {
             justify-content: center;
             font-size: 24px;
             color: white;
+            background: var(--primary);
         }
 
         .stat-icon.warning {
@@ -697,16 +743,17 @@ try {
         .stat-info h3 {
             font-size: 28px;
             margin-bottom: 5px;
+            color: var(--text-primary);
         }
 
         .stat-info p {
-            color: var(--gray);
+            color: var(--text-secondary);
             font-size: 14px;
         }
 
         /* Pointage Section */
         .pointage-section {
-            background: white;
+            background: var(--bg-card);
             border-radius: var(--border-radius);
             padding: 25px;
             box-shadow: var(--shadow);
@@ -722,10 +769,11 @@ try {
 
         .pointage-header h2 {
             font-size: 24px;
+            color: var(--text-primary);
         }
 
         .pointage-date {
-            color: var(--gray);
+            color: var(--text-secondary);
             font-weight: 600;
         }
 
@@ -747,16 +795,19 @@ try {
         .status-complete {
             background: #d4edda;
             color: #155724;
+            border: 1px solid #c3e6cb;
         }
 
         .status-in-progress {
             background: #fff3cd;
             color: #856404;
+            border: 1px solid #ffeaa7;
         }
 
         .status-pending {
             background: #e2e3e5;
             color: #383d41;
+            border: 1px solid #d6d8db;
         }
 
         .status-info h3 {
@@ -791,7 +842,7 @@ try {
 
         /* History Section */
         .history-section {
-            background: white;
+            background: var(--bg-card);
             border-radius: var(--border-radius);
             padding: 25px;
             box-shadow: var(--shadow);
@@ -806,6 +857,7 @@ try {
 
         .section-header h2 {
             font-size: 24px;
+            color: var(--text-primary);
         }
 
         .view-all {
@@ -824,7 +876,7 @@ try {
         }
 
         .history-card {
-            background: #f8f9fa;
+            background: var(--bg-secondary);
             border-radius: 10px;
             padding: 20px;
         }
@@ -834,7 +886,7 @@ try {
             display: flex;
             align-items: center;
             gap: 10px;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .history-item {
@@ -842,7 +894,7 @@ try {
             justify-content: space-between;
             align-items: center;
             padding: 10px 0;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .history-item:last-child {
@@ -851,6 +903,7 @@ try {
 
         .history-time, .history-date {
             font-weight: 600;
+            color: var(--text-primary);
         }
 
         .history-type {
@@ -870,13 +923,13 @@ try {
         }
 
         .history-count {
-            color: var(--gray);
+            color: var(--text-secondary);
             font-size: 14px;
         }
 
         .no-data {
             text-align: center;
-            color: var(--gray);
+            color: var(--text-secondary);
             font-style: italic;
             padding: 20px 0;
         }
@@ -892,7 +945,7 @@ try {
             justify-content: space-between;
             align-items: center;
             padding: 15px;
-            background: white;
+            background: var(--bg-card);
             border-radius: 8px;
             border-left: 4px solid var(--primary);
         }

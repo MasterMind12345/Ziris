@@ -1,8 +1,8 @@
 <?php
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'globall1_batobaye');
-define('DB_USER', 'globall1_tonton');
-define('DB_PASS', 'F4t5sef8');
+define('DB_NAME', 'systeme_presence');
+define('DB_USER', 'root');
+define('DB_PASS', '');
 
 try {
     $pdo = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8", DB_USER, DB_PASS);

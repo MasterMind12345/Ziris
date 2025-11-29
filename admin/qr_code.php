@@ -3,13 +3,11 @@ session_start();
 require_once '../config/database.php';
 require_once 'includes/functions.php';
 
-// Vérifier si l'utilisateur est connecté et est admin
 if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
     header('Location: ../login.php');
     exit;
 }
 
-// Générer ou récupérer le QR Code
 $qrUrl = generateQRCode();
 ?>
 <!DOCTYPE html>
@@ -17,7 +15,7 @@ $qrUrl = generateQRCode();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code - Batobaye Admin</title>
+    <title>QR Code - Ziris Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
@@ -25,7 +23,7 @@ $qrUrl = generateQRCode();
 <meta name="theme-color" content="#4361ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
 <link rel="manifest" href="/manifest.json">
 
@@ -37,7 +35,7 @@ $qrUrl = generateQRCode();
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 
 <!-- CSS existant -->
 <link rel="stylesheet" href="../css/employee.css">
@@ -64,7 +62,7 @@ $qrUrl = generateQRCode();
                 <div class="qr-code-container">
                     <div id="qrcode">
                         <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=<?php echo urlencode($qrUrl); ?>&color=4361ee&bgcolor=ffffff&margin=10" 
-                             alt="QR Code Batobaye" 
+                             alt="QR Code Ziris" 
                              id="qrImage"
                              style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
                     </div>
@@ -184,7 +182,7 @@ $qrUrl = generateQRCode();
         function downloadQRCode() {
             const qrImage = document.getElementById('qrImage');
             const link = document.createElement('a');
-            link.download = 'qr-code-batobaye.png';
+            link.download = 'qr-code-ziris.png';
             link.href = qrImage.src;
             link.click();
             showNotification('QR Code téléchargé avec succès!', 'success');
@@ -200,7 +198,7 @@ $qrUrl = generateQRCode();
                 <!DOCTYPE html>
                 <html>
                 <head>
-                    <title>QR Code Batobaye - Impression</title>
+                    <title>QR Code Ziris - Impression</title>
                     <style>
                         body { 
                             font-family: Arial, sans-serif; 
@@ -231,7 +229,7 @@ $qrUrl = generateQRCode();
                     </style>
                 </head>
                 <body>
-                    <div class="print-title">Batobaye - QR Code de Présence</div>
+                    <div class="print-title">Ziris - QR Code de Présence</div>
                     <div class="print-url">${qrUrl}</div>
                     <img src="${qrImageSrc}" class="qr-image">
                     <div class="print-instructions">

@@ -30,7 +30,7 @@ class PWAInstall {
                 <i class="fas fa-mobile-alt"></i>
             </div>
             <div class="pwa-banner-text">
-                <h4>📱 Installer l'application Batobaye</h4>
+                <h4>📱 Installer l'application Ziris</h4>
                 <p>Accédez à votre tableau de bord rapidement, même hors ligne !</p>
             </div>
         </div>
@@ -189,7 +189,7 @@ class PWAInstall {
         modal.innerHTML = `
             <div class="pwa-modal-content">
                 <div class="pwa-modal-header">
-                    <h3>📲 Installer Batobaye</h3>
+                    <h3>📲 Installer Ziris</h3>
                     <button class="pwa-modal-close">&times;</button>
                 </div>
                 <div class="pwa-modal-body">
@@ -238,7 +238,7 @@ class PWAInstall {
 
     registerServiceWorker() {
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/batobaye/sw.js')
+            navigator.serviceWorker.register('/ziris/sw.js')
                 .then(function(registration) {
                     console.log('ServiceWorker enregistré avec succès');
                 })

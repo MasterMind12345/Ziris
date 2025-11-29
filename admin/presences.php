@@ -3,17 +3,14 @@ session_start();
 require_once '../config/database.php';
 require_once 'includes/functions.php';
 
-// Vérifier si l'utilisateur est connecté et est admin
 if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
     header('Location: ../login.php');
     exit;
 }
 
-// Déterminer la période affichée
 $period = isset($_GET['period']) ? $_GET['period'] : 'daily';
 $date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
 
-// Récupérer les présences selon la période
 $presences = getPresencesByPeriod($period, $date);
 ?>
 <!DOCTYPE html>
@@ -21,7 +18,7 @@ $presences = getPresencesByPeriod($period, $date);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion des Présences - Batobaye Admin</title>
+    <title>Gestion des Présences - Ziris Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
@@ -29,7 +26,7 @@ $presences = getPresencesByPeriod($period, $date);
 <meta name="theme-color" content="#4361ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 <link rel="apple-touch-icon" href="icons/icon-152x152.png">
 <link rel="manifest" href="/manifest.json">
 
@@ -41,7 +38,7 @@ $presences = getPresencesByPeriod($period, $date);
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Batobaye">
+<meta name="apple-mobile-web-app-title" content="Ziris">
 
 <!-- CSS existant -->
 <link rel="stylesheet" href="../css/employee.css">
@@ -79,7 +76,7 @@ $presences = getPresencesByPeriod($period, $date);
                 <h2>Liste des Présences</h2>
                 <div class="table-actions">
                     <input type="text" class="form-control table-search" placeholder="Rechercher...">
-                    <button class="btn btn-primary" onclick="exportToCSV('presencesTable', 'presences-batobaye.csv')">
+                    <button class="btn btn-primary" onclick="exportToCSV('presencesTable', 'presences-Ziris.csv')">
                         <i class="fas fa-download"></i> Exporter
                     </button>
                 </div>
