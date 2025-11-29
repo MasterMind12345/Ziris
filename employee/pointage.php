@@ -1,3 +1,4 @@
+
 <?php
 session_start();
 require_once '../config/database.php';
@@ -40,6 +41,7 @@ try {
     die("Erreur de base de données.");
 }
 
+// Utiliser la date du serveur pour récupérer les présences, mais l'heure de l'appareil pour le pointage
 try {
     $stmt = $pdo->prepare("SELECT * FROM presences WHERE user_id = ? AND date_presence = CURDATE()");
     $stmt->execute([$user_id]);
@@ -69,7 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $lieu = "Localisation: " . $_POST['latitude'] . ", " . $_POST['longitude'];
             }
             
-            $heure_debut = date('H:i:s');
+            // Récupérer l'heure de l'appareil utilisateur depuis le formulaire
+            $heure_debut = $_POST['client_time'] ?? date('H:i:s');
             
             $retard_minutes = 0;
             if ($heure_debut > $parametres['heure_debut_normal']) {
@@ -87,7 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message_type = 'success';
             
         } elseif ($action === 'fin' && $presence_aujourdhui && !$presence_aujourdhui['heure_fin_reel']) {
-            $heure_fin = date('H:i:s');
+            // Récupérer l'heure de l'appareil utilisateur depuis le formulaire
+            $heure_fin = $_POST['client_time'] ?? date('H:i:s');
             
             $stmt = $pdo->prepare("UPDATE presences SET heure_fin_reel = ? WHERE id = ?");
             $stmt->execute([$heure_fin, $presence_aujourdhui['id']]);
@@ -277,6 +281,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <input type="hidden" name="action" value="debut">
                             <input type="hidden" name="latitude" id="latitude">
                             <input type="hidden" name="longitude" id="longitude">
+                            <input type="hidden" name="client_time" id="clientTime">
                             
                             <div class="action-info">
                                 <h3>Commencer la Journée</h3>
@@ -285,6 +290,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <div class="geolocation-status">
                                     <i class="fas fa-satellite"></i>
                                     <span id="geolocStatus">Vérification de la localisation...</span>
+                                </div>
+                                
+                                <div class="heure-actuelle">
+                                    <i class="fas fa-clock"></i>
+                                    <span id="currentTime">Chargement de l'heure...</span>
                                 </div>
                                 
                                 <div class="heure-reference">
@@ -298,12 +308,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </button>
                         </form>
                     <?php elseif (!$presence_aujourdhui['heure_fin_reel']): ?>
-                        <form method="POST">
+                        <form method="POST" id="pointageFinForm">
                             <input type="hidden" name="action" value="fin">
+                            <input type="hidden" name="client_time" id="clientTimeFin">
                             
                             <div class="action-info">
                                 <h3>Terminer la Journée</h3>
                                 <p>Pointage de départ</p>
+                                
+                                <div class="heure-actuelle">
+                                    <i class="fas fa-clock"></i>
+                                    <span id="currentTimeFin">Chargement de l'heure...</span>
+                                </div>
                                 
                                 <div class="heure-reference">
                                     <small>Heure de référence: <?php echo substr($parametres['heure_fin_normal'], 0, 5); ?></small>
@@ -343,8 +359,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="info-item">
                     <i class="fas fa-clock"></i>
                     <div>
-                        <h4>Calcul Automatique des Retards</h4>
-                        <p>Les retards sont calculés automatiquement par rapport aux heures de référence définies par l'administration.</p>
+                        <h4>Heure de l'Appareil Utilisée</h4>
+                        <p>L'heure enregistrée est celle de votre appareil pour plus de précision.</p>
                     </div>
                 </div>
                 <div class="info-item">
@@ -759,6 +775,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-color: rgba(230, 57, 70, 0.2);
         }
 
+        .heure-actuelle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px;
+            background: rgba(114, 9, 183, 0.1);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: var(--secondary);
+            border: 1px solid rgba(114, 9, 183, 0.2);
+            font-weight: 600;
+        }
+
         .heure-reference {
             color: var(--text-secondary);
             font-size: 12px;
@@ -1005,6 +1036,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 
     <script>
+        // Fonction pour obtenir l'heure actuelle de l'appareil
+        function getCurrentTime() {
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const seconds = now.getSeconds().toString().padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+        }
+
+        // Mettre à jour l'affichage de l'heure en temps réel
+        function updateCurrentTime() {
+            const currentTimeElements = document.querySelectorAll('#currentTime, #currentTimeFin');
+            currentTimeElements.forEach(element => {
+                if (element) {
+                    element.textContent = getCurrentTime();
+                }
+            });
+        }
+
         // Géolocalisation
         function getLocation() {
             const statusElement = document.getElementById('geolocStatus');
@@ -1092,6 +1142,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            // Mettre à jour l'heure actuelle toutes les secondes
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 1000);
+
+            // Préparer l'heure pour les formulaires
+            const pointageForm = document.getElementById('pointageForm');
+            const pointageFinForm = document.getElementById('pointageFinForm');
+            
+            if (pointageForm) {
+                pointageForm.addEventListener('submit', function() {
+                    document.getElementById('clientTime').value = getCurrentTime();
+                });
+            }
+            
+            if (pointageFinForm) {
+                pointageFinForm.addEventListener('submit', function() {
+                    document.getElementById('clientTimeFin').value = getCurrentTime();
+                });
+            }
+
             <?php if (!$presence_aujourdhui): ?>
                 getLocation();
             <?php elseif (!$presence_aujourdhui['heure_fin_reel']): ?>
@@ -1107,4 +1177,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         });
     </script>
 </body>
-</html>
+</html>]

@@ -11,6 +11,29 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
+// Récupérer les préférences utilisateur pour le thème
+try {
+    $stmt = $pdo->prepare("SELECT * FROM user_preferences WHERE user_id = ?");
+    $stmt->execute([$user_id]);
+    $preferences = $stmt->fetch();
+    
+    if (!$preferences) {
+        // Créer des préférences par défaut
+        $stmt = $pdo->prepare("INSERT INTO user_preferences (user_id, theme, font_size, notifications, accessibility_mode) VALUES (?, 'light', 'medium', 1, 0)");
+        $stmt->execute([$user_id]);
+        // Re-récupérer les préférences après insertion
+        $stmt = $pdo->prepare("SELECT * FROM user_preferences WHERE user_id = ?");
+        $stmt->execute([$user_id]);
+        $preferences = $stmt->fetch();
+    }
+} catch(PDOException $e) {
+    // Si la table n'existe pas, utiliser des valeurs par défaut
+    $preferences = ['theme' => 'light', 'font_size' => 'medium', 'notifications' => 1, 'accessibility_mode' => 0];
+}
+
+// Déterminer le thème actuel pour l'affichage
+$currentTheme = $preferences['theme'] ?? 'light';
+
 // Récupérer les informations de l'utilisateur
 try {
     $stmt = $pdo->prepare("SELECT u.*, p.nom as poste_nom FROM users u LEFT JOIN postes p ON u.poste_id = p.id WHERE u.id = ?");
@@ -48,14 +71,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $adresse_details = $_POST['adresse_details'] ?? '';
     $quartier = $_POST['quartier'] ?? '';
     $ville = $_POST['ville'] ?? '';
+    $heure_appareil = $_POST['heure_appareil'] ?? ''; // Nouveau champ pour l'heure de l'appareil
     
-    error_log("Pointage attempt - Action: $action, Lat: $latitude, Lng: $longitude");
+    error_log("Pointage attempt - Action: $action, Lat: $latitude, Lng: $longitude, Heure Appareil: $heure_appareil");
     
     try {
         if ($action === 'debut' && !$presence_aujourdhui) {
-            $heure_debut = date('H:i:s');
+            // Utiliser l'heure de l'appareil si disponible, sinon heure serveur
+            if (!empty($heure_appareil)) {
+                // Convertir l'heure de l'appareil en format MySQL
+                $heure_debut = date('H:i:s', strtotime($heure_appareil));
+                $date_presence = date('Y-m-d', strtotime($heure_appareil));
+            } else {
+                $heure_debut = date('H:i:s');
+                $date_presence = date('Y-m-d');
+            }
             
-            // Calcul du retard
+            // Calcul du retard basé sur l'heure de l'appareil
             $retard_minutes = 0;
             if ($heure_debut > $parametres['heure_debut_normal']) {
                 $diff = strtotime($heure_debut) - strtotime($parametres['heure_debut_normal']);
@@ -71,17 +103,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $adresse_complete .= " | Ville: " . $ville;
             }
             
-            $stmt = $pdo->prepare("INSERT INTO presences (user_id, date_presence, heure_debut_reel, lieu, retard_minutes, latitude, longitude) VALUES (?, CURDATE(), ?, ?, ?, ?, ?)");
-            $stmt->execute([$user_id, $heure_debut, $adresse_complete, $retard_minutes, $latitude, $longitude]);
+            $stmt = $pdo->prepare("INSERT INTO presences (user_id, date_presence, heure_debut_reel, lieu, retard_minutes, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$user_id, $date_presence, $heure_debut, $adresse_complete, $retard_minutes, $latitude, $longitude]);
             
-            $message = "✅ Pointage de début enregistré à " . $heure_debut;
+            $message = "✅ Pointage de début enregistré à " . $heure_debut . " (Heure appareil)";
             if ($retard_minutes > 0) {
                 $message .= " (Retard: " . $retard_minutes . " minutes)";
             }
             $message_type = 'success';
             
         } elseif ($action === 'fin' && $presence_aujourdhui && !$presence_aujourdhui['heure_fin_reel']) {
-            $heure_fin = date('H:i:s');
+            // Utiliser l'heure de l'appareil si disponible, sinon heure serveur
+            if (!empty($heure_appareil)) {
+                $heure_fin = date('H:i:s', strtotime($heure_appareil));
+            } else {
+                $heure_fin = date('H:i:s');
+            }
             
             // Construction de l'adresse complète pour la fin
             $adresse_complete = $adresse_details;
@@ -95,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("UPDATE presences SET heure_fin_reel = ?, lieu_fin = ?, latitude_fin = ?, longitude_fin = ? WHERE id = ?");
             $stmt->execute([$heure_fin, $adresse_complete, $latitude, $longitude, $presence_aujourdhui['id']]);
             
-            $message = "✅ Pointage de fin enregistré à " . $heure_fin;
+            $message = "✅ Pointage de fin enregistré à " . $heure_fin . " (Heure appareil)";
             $message_type = 'success';
             
         } else {
@@ -117,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="<?php echo $currentTheme; ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -156,17 +193,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             --light: #f8f9fa;
             --dark: #212529;
             --gray: #6c757d;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-card: #ffffff;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --border-color: #e9ecef;
+        }
+
+        /* Thème sombre */
+        [data-theme="dark"] {
+            --bg-primary: #121212;
+            --bg-secondary: #1e1e1e;
+            --bg-card: #2d2d2d;
+            --text-primary: #f8f9fa;
+            --text-secondary: #adb5bd;
+            --border-color: #404040;
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
         }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--bg-primary);
+            color: var(--text-primary);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -175,12 +230,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .container {
-            background: white;
+            background: var(--bg-card);
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             width: 100%;
             max-width: 500px;
             overflow: hidden;
+            border: 1px solid var(--border-color);
         }
 
         .header {
@@ -210,16 +266,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .user-info {
-            background: #f8f9fa;
+            background: var(--bg-secondary);
             padding: 15px;
             text-align: center;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .user-name {
             font-size: 18px;
             font-weight: 600;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .user-poste {
@@ -257,8 +313,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-align: center;
             margin-bottom: 20px;
             padding: 15px;
-            background: #f8f9fa;
+            background: var(--bg-secondary);
             border-radius: 10px;
+            border: 1px solid var(--border-color);
         }
 
         .status-icon {
@@ -269,9 +326,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .geolocation-section {
             margin-bottom: 20px;
             padding: 15px;
-            background: #e7f3ff;
+            background: var(--bg-secondary);
             border-radius: 10px;
             border-left: 4px solid var(--primary);
+            border: 1px solid var(--border-color);
         }
 
         .geolocation-header {
@@ -288,11 +346,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .map-container {
             height: 250px;
-            background: #f8f9fa;
+            background: var(--bg-secondary);
             border-radius: 8px;
             margin-bottom: 12px;
             overflow: hidden;
-            border: 2px solid #e9ecef;
+            border: 2px solid var(--border-color);
             position: relative;
         }
 
@@ -303,16 +361,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .location-info {
             font-size: 13px;
-            color: var(--gray);
+            color: var(--text-secondary);
             text-align: center;
             margin-bottom: 8px;
         }
 
         .address-details {
-            background: white;
+            background: var(--bg-card);
             padding: 12px;
             border-radius: 8px;
-            border: 1px solid #dee2e6;
+            border: 1px solid var(--border-color);
             font-size: 12px;
             margin-top: 10px;
             line-height: 1.4;
@@ -321,8 +379,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .location-breakdown {
             margin-top: 8px;
             padding: 8px;
-            background: #f8f9fa;
+            background: var(--bg-secondary);
             border-radius: 5px;
+        }
+
+        .time-info {
+            background: var(--bg-secondary);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid var(--success);
+            border: 1px solid var(--border-color);
+        }
+
+        .time-display {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .time-label {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .time-value {
+            font-family: monospace;
+            font-weight: bold;
+            color: var(--success);
+            font-size: 14px;
+        }
+
+        .time-note {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-align: center;
         }
 
         .btn-pointage {
@@ -442,7 +534,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             gap: 6px;
             margin-top: 6px;
             font-size: 11px;
-            color: #6b7280;
+            color: var(--text-secondary);
         }
 
         .accuracy-bar {
@@ -549,6 +641,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
             </div>
 
+            <!-- Affichage de l'heure de l'appareil -->
+            <div class="time-info">
+                <div class="time-display">
+                    <span class="time-label">🕐 Heure Appareil:</span>
+                    <span class="time-value" id="deviceTime">--:--:--</span>
+                </div>
+                <div class="time-display">
+                    <span class="time-label">📅 Date Appareil:</span>
+                    <span class="time-value" id="deviceDate">--/--/----</span>
+                </div>
+                <div class="time-note">
+                    ⏰ L'heure de votre appareil sera utilisée pour le pointage
+                </div>
+            </div>
+
             <!-- Géolocalisation et Carte -->
             <div class="geolocation-section">
                 <div class="geolocation-header">
@@ -616,6 +723,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="hidden" name="adresse_details" id="adresseDetails">
                 <input type="hidden" name="quartier" id="quartier">
                 <input type="hidden" name="ville" id="ville">
+                <input type="hidden" name="heure_appareil" id="heureAppareil"> <!-- Nouveau champ pour l'heure appareil -->
                 
                 <?php if (!$presence_aujourdhui): ?>
                     <button type="submit" class="btn-pointage btn-start" id="btnStart" disabled>
@@ -666,6 +774,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         let userLongitude = null;
         let currentAccuracy = null;
         let isHighAccuracy = false;
+
+        // Fonction pour mettre à jour l'heure de l'appareil
+        function updateDeviceTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('fr-FR');
+            const dateString = now.toLocaleDateString('fr-FR');
+            
+            document.getElementById('deviceTime').textContent = timeString;
+            document.getElementById('deviceDate').textContent = dateString;
+            
+            // Mettre à jour le champ caché avec l'heure ISO complète
+            document.getElementById('heureAppareil').value = now.toISOString();
+        }
+
+        // Mettre à jour l'heure toutes les secondes
+        setInterval(updateDeviceTime, 1000);
+        updateDeviceTime(); // Initialisation
 
         function initMap() {
             console.log("🚀 Initialisation Google Maps - Mode GPS Smartphone");

@@ -7,8 +7,8 @@ try {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
     // Créer la base de données si elle n'existe pas
-    $pdo->exec("CREATE DATABASE IF NOT EXISTS globall1_tonton");
-    $pdo->exec("USE globall1_tonton");
+    $pdo->exec("CREATE DATABASE IF NOT EXISTS globall1_ziris");
+    $pdo->exec("USE globall1_ziris");
 } catch(PDOException $e) {
     die("Erreur de connexion: " . $e->getMessage());
 }
