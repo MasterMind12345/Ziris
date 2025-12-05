@@ -924,5 +924,6 @@ $currentTheme = $preferences['theme'] ?? 'light';
         });
     });
 </script>
+
 </body>
 </html>

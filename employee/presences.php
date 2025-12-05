@@ -941,5 +941,6 @@ try {
             });
         });
     </script>
+    <script src="/pwa-notifications.js"></script>
 </body>
 </html>

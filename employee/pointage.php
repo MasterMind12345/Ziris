@@ -1984,5 +1984,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }, 2000);
         <?php endif; ?>
     </script>
+    <!-- Après les autres scripts -->
+<script src="/pwa-notifications.js"></script>
 </body>
 </html>
