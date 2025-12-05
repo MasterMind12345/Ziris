@@ -17,7 +17,7 @@ if ($admin && isset($admin['nom'])) {
 ?>
 <header class="header">
     <div class="header-left">
-        <h1>Batobaye Admin</h1>
+        <h1>Ziris Admin</h1>
     </div>
     <div class="header-right">
         <div class="notifications">

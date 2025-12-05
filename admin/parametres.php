@@ -13,8 +13,10 @@ $settings = getSystemSettings();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $heure_debut = $_POST['heure_debut_normal'] ?? '';
     $heure_fin = $_POST['heure_fin_normal'] ?? '';
+    $debut_pause_normal = $_POST['debut_pause_normal'] ?? '';
+    $fin_pause_normal = $_POST['fin_pause_normal'] ?? '';
     
-    if (updateSystemSettings($heure_debut, $heure_fin)) {
+    if (updateSystemSettings($heure_debut, $heure_fin, $debut_pause_normal, $fin_pause_normal)) {
         $success_message = "Paramètres mis à jour avec succès!";
         $settings = getSystemSettings();
     } else {
@@ -32,26 +34,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
     <!-- PWA Meta Tags -->
-<meta name="theme-color" content="#4361ee"/>
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Ziris">
-<link rel="apple-touch-icon" href="icons/icon-152x152.png">
-<link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#4361ee"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ziris">
+    <link rel="apple-touch-icon" href="icons/icon-152x152.png">
+    <link rel="manifest" href="/manifest.json">
 
-<!-- PWA Configuration -->
-<link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/pwa-install.css">
-<script src="/pwa-install.js" defer></script>
-<meta name="theme-color" content="#4361ee"/>
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Ziris">
+    <!-- PWA Configuration -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/pwa-install.css">
+    <script src="/pwa-install.js" defer></script>
+    <meta name="theme-color" content="#4361ee"/>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ziris">
 
-<!-- CSS existant -->
-<link rel="stylesheet" href="../css/employee.css">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- CSS existant -->
+    <link rel="stylesheet" href="../css/employee.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <?php include 'includes/header.php'; ?>
@@ -89,6 +91,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label for="heure_fin_normal">Heure de fin normale:</label>
                     <input type="time" id="heure_fin_normal" name="heure_fin_normal" 
                            class="form-control" value="<?php echo $settings['heure_fin_normal'] ?? '17:00'; ?>" required>
+                </div>
+
+                <h2 style="margin-top: 30px;">Heures de Pause Normales</h2>
+                
+                <div class="form-group">
+                    <label for="debut_pause_normal">Heure de début de pause normale:</label>
+                    <input type="time" id="debut_pause_normal" name="debut_pause_normal" 
+                           class="form-control" value="<?php echo $settings['debut_pause_normal'] ?? '12:00'; ?>">
+                </div>
+                
+                <div class="form-group">
+                    <label for="fin_pause_normal">Heure de fin de pause normale:</label>
+                    <input type="time" id="fin_pause_normal" name="fin_pause_normal" 
+                           class="form-control" value="<?php echo $settings['fin_pause_normal'] ?? '13:00'; ?>">
                 </div>
                 
                 <div class="form-actions">

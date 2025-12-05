@@ -71,23 +71,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $adresse_details = $_POST['adresse_details'] ?? '';
     $quartier = $_POST['quartier'] ?? '';
     $ville = $_POST['ville'] ?? '';
-    $heure_appareil = $_POST['heure_appareil'] ?? ''; // Nouveau champ pour l'heure de l'appareil
+    $heure_appareil = $_POST['heure_appareil'] ?? ''; // Heure locale capturée au clic
+    $date_appareil = $_POST['date_appareil'] ?? ''; // Date locale capturée au clic
     
-    error_log("Pointage attempt - Action: $action, Lat: $latitude, Lng: $longitude, Heure Appareil: $heure_appareil");
+    error_log("Pointage attempt - Action: $action, Lat: $latitude, Lng: $longitude, Heure Appareil: $heure_appareil, Date Appareil: $date_appareil");
     
     try {
         if ($action === 'debut' && !$presence_aujourdhui) {
-            // Utiliser l'heure de l'appareil si disponible, sinon heure serveur
-            if (!empty($heure_appareil)) {
-                // Convertir l'heure de l'appareil en format MySQL
-                $heure_debut = date('H:i:s', strtotime($heure_appareil));
-                $date_presence = date('Y-m-d', strtotime($heure_appareil));
+            // UTILISER L'HEURE ET DATE LOCALE DE L'APPAREIL
+            if (!empty($heure_appareil) && !empty($date_appareil)) {
+                // Combiner la date et l'heure locales
+                $date_heure_complete = $date_appareil . ' ' . $heure_appareil;
+                
+                // Convertir en format MySQL
+                $heure_debut = date('H:i:s', strtotime($date_heure_complete));
+                $date_presence = date('Y-m-d', strtotime($date_heure_complete));
+                
+                error_log("✅ Pointage début - Heure locale: $heure_appareil, Date locale: $date_appareil => MySQL: $heure_debut, Date: $date_presence");
             } else {
+                // Fallback: utiliser l'heure locale du serveur (pas UTC)
                 $heure_debut = date('H:i:s');
                 $date_presence = date('Y-m-d');
+                error_log("⚠️ Heure appareil non disponible pour début, utilisation heure serveur local");
             }
             
-            // Calcul du retard basé sur l'heure de l'appareil
+            // Calcul du retard basé sur l'heure locale
             $retard_minutes = 0;
             if ($heure_debut > $parametres['heure_debut_normal']) {
                 $diff = strtotime($heure_debut) - strtotime($parametres['heure_debut_normal']);
@@ -106,18 +114,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("INSERT INTO presences (user_id, date_presence, heure_debut_reel, lieu, retard_minutes, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([$user_id, $date_presence, $heure_debut, $adresse_complete, $retard_minutes, $latitude, $longitude]);
             
-            $message = "✅ Pointage de début enregistré à " . $heure_debut . " (Heure appareil)";
+            $message = "✅ Pointage de début enregistré à " . $heure_debut . " (Heure locale appareil)";
             if ($retard_minutes > 0) {
                 $message .= " (Retard: " . $retard_minutes . " minutes)";
             }
             $message_type = 'success';
             
         } elseif ($action === 'fin' && $presence_aujourdhui && !$presence_aujourdhui['heure_fin_reel']) {
-            // Utiliser l'heure de l'appareil si disponible, sinon heure serveur
-            if (!empty($heure_appareil)) {
-                $heure_fin = date('H:i:s', strtotime($heure_appareil));
+            // UTILISER L'HEURE LOCALE DE L'APPAREIL
+            if (!empty($heure_appareil) && !empty($date_appareil)) {
+                // Combiner la date et l'heure locales
+                $date_heure_complete = $date_appareil . ' ' . $heure_appareil;
+                
+                // Convertir en format MySQL
+                $heure_fin = date('H:i:s', strtotime($date_heure_complete));
+                
+                error_log("✅ Pointage fin - Heure locale: $heure_appareil, Date locale: $date_appareil => MySQL: $heure_fin");
             } else {
+                // Fallback: utiliser l'heure locale du serveur (pas UTC)
                 $heure_fin = date('H:i:s');
+                error_log("⚠️ Heure appareil non disponible pour fin, utilisation heure serveur local");
             }
             
             // Construction de l'adresse complète pour la fin
@@ -132,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("UPDATE presences SET heure_fin_reel = ?, lieu_fin = ?, latitude_fin = ?, longitude_fin = ? WHERE id = ?");
             $stmt->execute([$heure_fin, $adresse_complete, $latitude, $longitude, $presence_aujourdhui['id']]);
             
-            $message = "✅ Pointage de fin enregistré à " . $heure_fin . " (Heure appareil)";
+            $message = "✅ Pointage de fin enregistré à " . $heure_fin . " (Heure locale appareil)";
             $message_type = 'success';
             
         } else {
@@ -162,26 +178,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- PWA Meta Tags -->
-<meta name="theme-color" content="#4361ee"/>
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Ziris">
-<link rel="apple-touch-icon" href="icons/icon-152x152.png">
-<link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4361ee"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ziris">
+    <link rel="apple-touch-icon" href="icons/icon-152x152.png">
+    <link rel="manifest" href="manifest.json">
 
-<!-- PWA Configuration -->
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="pwa-install.css">
-<script src="pwa-install.js" defer></script>
-<meta name="theme-color" content="#4361ee"/>
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Ziris">
-
-<!-- CSS existant -->
-<link rel="stylesheet" href="../css/employee.css">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- CSS existant -->
+    <link rel="stylesheet" href="../css/employee.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
     <style>
         :root {
             --primary: #4361ee;
@@ -575,6 +582,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #fef3c7;
             color: #92400e;
         }
+        
+        .click-time-info {
+            background: #e0f2fe;
+            padding: 8px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 11px;
+            text-align: center;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+        }
+        
+        .timezone-info {
+            background: #f3e8ff;
+            padding: 6px;
+            border-radius: 4px;
+            margin-top: 5px;
+            font-size: 10px;
+            text-align: center;
+            color: #7c3aed;
+            border: 1px solid #ddd6fe;
+        }
     </style>
 </head>
 <body>
@@ -584,7 +613,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <i class="fas fa-satellite"></i>
             </div>
             <h1 style="font-size: 20px;">Pointage GPS Direct</h1>
-            <p style="font-size: 14px; opacity: 0.9;">Localisation Appareil - Pas de Cache</p>
+            <p style="font-size: 14px; opacity: 0.9;">Heure Locale Appareil - Pas de Cache</p>
         </div>
 
         <div class="user-info">
@@ -644,15 +673,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <!-- Affichage de l'heure de l'appareil -->
             <div class="time-info">
                 <div class="time-display">
-                    <span class="time-label">🕐 Heure Appareil:</span>
+                    <span class="time-label">🕐 Heure Locale:</span>
                     <span class="time-value" id="deviceTime">--:--:--</span>
                 </div>
                 <div class="time-display">
-                    <span class="time-label">📅 Date Appareil:</span>
+                    <span class="time-label">📅 Date Locale:</span>
                     <span class="time-value" id="deviceDate">--/--/----</span>
                 </div>
+                <div class="time-display">
+                    <span class="time-label">🌍 Fuseau Horaire:</span>
+                    <span class="time-value" id="deviceTimezone">--</span>
+                </div>
+                <div id="clickTimeDisplay" class="click-time-info" style="display: none;">
+                    ⏰ <strong>Heure du pointage:</strong> <span id="clickTimeText">--:--:--</span>
+                    <div id="clickDateText" style="font-size: 10px; margin-top: 2px;"></div>
+                </div>
                 <div class="time-note">
-                    ⏰ L'heure de votre appareil sera utilisée pour le pointage
+                    ⚡ L'heure LOCALE sera capturée au moment du clic sur le bouton
+                </div>
+                <div class="timezone-info">
+                    <i class="fas fa-globe-africa"></i> 
+                    <span id="timezoneOffset">Fuseau horaire détecté...</span>
                 </div>
             </div>
 
@@ -717,15 +758,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <!-- Actions de pointage -->
             <form method="POST" id="pointageForm">
-                <input type="hidden" name="action" id="actionType" value="debut">
-                <input type="hidden" name="latitude" id="latitude">
-                <input type="hidden" name="longitude" id="longitude">
-                <input type="hidden" name="adresse_details" id="adresseDetails">
-                <input type="hidden" name="quartier" id="quartier">
-                <input type="hidden" name="ville" id="ville">
-                <input type="hidden" name="heure_appareil" id="heureAppareil"> <!-- Nouveau champ pour l'heure appareil -->
-                
                 <?php if (!$presence_aujourdhui): ?>
+                    <input type="hidden" name="action" value="debut">
                     <button type="submit" class="btn-pointage btn-start" id="btnStart" disabled>
                         <i class="fas fa-play-circle"></i>
                         <span>Pointer mon Arrivée</span>
@@ -745,12 +779,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <small style="font-size: 11px; opacity: 0.9;">Revenez demain</small>
                     </button>
                 <?php endif; ?>
+                
+                <input type="hidden" name="latitude" id="latitude">
+                <input type="hidden" name="longitude" id="longitude">
+                <input type="hidden" name="adresse_details" id="adresseDetails">
+                <input type="hidden" name="quartier" id="quartier">
+                <input type="hidden" name="ville" id="ville">
+                <input type="hidden" name="heure_appareil" id="heureAppareil" value="">
+                <input type="hidden" name="date_appareil" id="dateAppareil" value="">
             </form>
 
             <!-- Information importante -->
             <div class="info-section">
                 <h4><i class="fas fa-mobile-alt"></i> Optimisé Smartphone</h4>
-                <p>Utilise le GPS hardware de votre appareil pour une localisation précise du quartier.</p>
+                <p>L'heure LOCALE de votre appareil sera capturée au moment du clic, pas au chargement de la page.</p>
+                <p style="margin-top: 5px; font-size: 11px;"><i class="fas fa-info-circle"></i> Basé sur votre fuseau horaire local, pas UTC</p>
             </div>
 
             <div class="back-link">
@@ -774,23 +817,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         let userLongitude = null;
         let currentAccuracy = null;
         let isHighAccuracy = false;
+        let clickTime = null;
+        let clickDate = null;
 
-        // Fonction pour mettre à jour l'heure de l'appareil
+        // Fonction pour mettre à jour l'heure LOCALE de l'appareil
         function updateDeviceTime() {
             const now = new Date();
+            
+            // Heure LOCALE (pas UTC)
             const timeString = now.toLocaleTimeString('fr-FR');
             const dateString = now.toLocaleDateString('fr-FR');
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const timezoneOffset = -now.getTimezoneOffset() / 60; // Heure UTC+...
             
             document.getElementById('deviceTime').textContent = timeString;
             document.getElementById('deviceDate').textContent = dateString;
+            document.getElementById('deviceTimezone').textContent = timezone;
             
-            // Mettre à jour le champ caché avec l'heure ISO complète
-            document.getElementById('heureAppareil').value = now.toISOString();
+            // Afficher le décalage horaire
+            let offsetText = "UTC";
+            if (timezoneOffset > 0) {
+                offsetText = `UTC+${timezoneOffset}`;
+            } else if (timezoneOffset < 0) {
+                offsetText = `UTC${timezoneOffset}`;
+            }
+            document.getElementById('timezoneOffset').textContent = 
+                `${timezone} (${offsetText}) - Heure Locale`;
         }
 
         // Mettre à jour l'heure toutes les secondes
         setInterval(updateDeviceTime, 1000);
         updateDeviceTime(); // Initialisation
+
+        // Capturer l'heure LOCALE précise au moment du clic sur le bouton
+        function setupClickTimeCapture() {
+            const submitButtons = document.querySelectorAll('.btn-pointage[type="submit"]');
+            
+            submitButtons.forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    const now = new Date();
+                    
+                    // Capturer l'heure et date LOCALES séparément
+                    const heureLocale = now.toLocaleTimeString('fr-FR'); // Format: HH:MM:SS
+                    const dateLocale = now.toLocaleDateString('fr-FR'); // Format: DD/MM/YYYY
+                    
+                    console.log("🕐 Heure locale capturée:", heureLocale);
+                    console.log("📅 Date locale capturée:", dateLocale);
+                    
+                    // Convertir la date locale en format YYYY-MM-DD pour MySQL
+                    const dateParts = dateLocale.split('/');
+                    const dateMySQL = `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}`;
+                    
+                    // Mettre à jour les champs cachés
+                    document.getElementById('heureAppareil').value = heureLocale;
+                    document.getElementById('dateAppareil').value = dateMySQL;
+                    
+                    // Afficher l'heure du pointage à l'utilisateur
+                    const action = this.classList.contains('btn-start') ? 'début' : 'fin';
+                    
+                    document.getElementById('clickTimeText').textContent = heureLocale;
+                    document.getElementById('clickDateText').textContent = `Date: ${dateLocale}`;
+                    document.getElementById('clickTimeDisplay').style.display = 'block';
+                    
+                    console.log(`⏰ Pointage ${action} programmé pour:`, heureLocale, "le", dateLocale);
+                    console.log(`📦 Données envoyées - Heure: ${heureLocale}, Date: ${dateMySQL}`);
+                });
+            });
+        }
 
         function initMap() {
             console.log("🚀 Initialisation Google Maps - Mode GPS Smartphone");
@@ -809,6 +902,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
 
             geocoder = new google.maps.Geocoder();
+            
+            // Configurer la capture d'heure LOCALE au clic
+            setupClickTimeCapture();
             
             // Démarrer la surveillance GPS pour smartphones
             startMobileGPS();
@@ -1105,12 +1201,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 return;
             }
             
-            // CONFIRMATION POUR LE POINTAGE DE FIN
-            if (document.getElementById('actionType').value === 'fin') {
-                if (!confirm('✅ Confirmez-vous votre départ ?')) {
-                    e.preventDefault();
-                    return;
-                }
+            const heureAppareil = document.getElementById('heureAppareil').value;
+            const dateAppareil = document.getElementById('dateAppareil').value;
+            
+            if (!heureAppareil || !dateAppareil) {
+                e.preventDefault();
+                alert('❌ Erreur: heure ou date non capturée. Veuillez réessayer en cliquant à nouveau sur le bouton.');
+                return;
+            }
+            
+            console.log("📋 Données à envoyer:", {
+                heure: heureAppareil,
+                date: dateAppareil,
+                lat: userLatitude,
+                lng: userLongitude
+            });
+            
+            // AFFICHER CONFIRMATION AVEC L'HEURE EXACTE
+            const action = document.querySelector('input[name="action"]').value;
+            
+            let confirmationMessage = '';
+            if (action === 'fin') {
+                confirmationMessage = `✅ Confirmez-vous votre départ à ${heureAppareil} ?`;
+            } else {
+                confirmationMessage = `✅ Confirmez-vous votre arrivée à ${heureAppareil} ?`;
+            }
+            
+            if (!confirm(confirmationMessage)) {
+                e.preventDefault();
+                return;
             }
             
             btn.disabled = true;

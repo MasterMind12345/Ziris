@@ -9,6 +9,47 @@ if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
 }
 
 $users = getAllUsers();
+$postes = getAllPostes();
+
+// Traitement de l'ajout d'un nouvel utilisateur
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
+    $nom = trim($_POST['nom']);
+    $email = trim($_POST['email']);
+    $password = $_POST['password'];
+    $poste_id = $_POST['poste_id'];
+    $is_admin = isset($_POST['is_admin']) ? 1 : 0;
+
+    // Validation
+    if (empty($nom) || empty($email) || empty($password)) {
+        $_SESSION['error'] = "Tous les champs obligatoires doivent être remplis.";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $_SESSION['error'] = "L'adresse email n'est pas valide.";
+    } elseif (strlen($password) < 6) {
+        $_SESSION['error'] = "Le mot de passe doit contenir au moins 6 caractères.";
+    } else {
+        // Vérifier si l'email existe déjà
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        
+        if ($stmt->rowCount() > 0) {
+            $_SESSION['error'] = "Un utilisateur avec cet email existe déjà.";
+        } else {
+            // Hasher le mot de passe
+            $password_hash = password_hash($password, PASSWORD_DEFAULT);
+            
+            // Insérer le nouvel utilisateur
+            $stmt = $pdo->prepare("INSERT INTO users (nom, email, password, poste_id, is_admin) VALUES (?, ?, ?, ?, ?)");
+            
+            if ($stmt->execute([$nom, $email, $password_hash, $poste_id, $is_admin])) {
+                $_SESSION['success'] = "Utilisateur créé avec succès !";
+                header('Location: users.php');
+                exit;
+            } else {
+                $_SESSION['error'] = "Erreur lors de la création de l'utilisateur.";
+            }
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -40,6 +81,150 @@ $users = getAllUsers();
     <!-- CSS existant -->
     <link rel="stylesheet" href="../css/employee.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        .form-section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border: 1px solid #e9ecef;
+        }
+
+        .form-section h2 {
+            color: #4361ee;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-section h2 i {
+            color: #4361ee;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #495057;
+            font-size: 0.9rem;
+        }
+
+        .form-control {
+            padding: 0.75rem 1rem;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background-color: #f8f9fa;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #4361ee;
+            background-color: white;
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+        }
+
+        .form-check {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .form-check input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 2px solid #dee2e6;
+            cursor: pointer;
+        }
+
+        .form-check input[type="checkbox"]:checked {
+            background-color: #4361ee;
+            border-color: #4361ee;
+        }
+
+        .form-check label {
+            font-weight: 500;
+            color: #495057;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, #4361ee, #3a56d4);
+            color: white;
+            border: none;
+            padding: 0.875rem 2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(67, 97, 238, 0.4);
+        }
+
+        .btn-submit:active {
+            transform: translateY(0);
+        }
+
+        .password-toggle {
+            position: relative;
+        }
+
+        .password-toggle .toggle-icon {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #6c757d;
+            transition: color 0.3s ease;
+        }
+
+        .password-toggle .toggle-icon:hover {
+            color: #4361ee;
+        }
+
+        .required::after {
+            content: " *";
+            color: #e63946;
+        }
+
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .form-section {
+                padding: 1.5rem;
+            }
+        }
+    </style>
 </head>
 <body>
     <?php include 'includes/header.php'; ?>
@@ -65,7 +250,62 @@ $users = getAllUsers();
                 <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
             </div>
         <?php endif; ?>
+
+        <!-- Section d'ajout d'un nouvel employé -->
+        <section class="form-section">
+            <h2><i class="fas fa-user-plus"></i> Ajouter un Nouvel Employé</h2>
+            <form method="POST" action="">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="nom" class="required">Nom complet</label>
+                        <input type="text" id="nom" name="nom" class="form-control" 
+                               placeholder="Ex: Jean Dupont" required 
+                               value="<?php echo isset($_POST['nom']) ? htmlspecialchars($_POST['nom']) : ''; ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email" class="required">Adresse email</label>
+                        <input type="email" id="email" name="email" class="form-control" 
+                               placeholder="Ex: jean.dupont@entreprise.com" required
+                               value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="poste_id" class="required">Poste</label>
+                        <select id="poste_id" name="poste_id" class="form-control" required>
+                            <option value="">Sélectionnez un poste</option>
+                            <?php foreach ($postes as $poste): ?>
+                                <option value="<?php echo $poste['id']; ?>" 
+                                    <?php echo (isset($_POST['poste_id']) && $_POST['poste_id'] == $poste['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($poste['nom']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group password-toggle">
+                        <label for="password" class="required">Mot de passe</label>
+                        <input type="password" id="password" name="password" class="form-control" 
+                               placeholder="Minimum 6 caractères" required minlength="6">
+                        <span class="toggle-icon" onclick="togglePasswordVisibility('password')">
+                            <i class="fas fa-eye"></i>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="form-check">
+                    <input type="checkbox" id="is_admin" name="is_admin" value="1"
+                           <?php echo (isset($_POST['is_admin']) && $_POST['is_admin']) ? 'checked' : ''; ?>>
+                    <label for="is_admin">Accorder les droits administrateur</label>
+                </div>
+
+                <button type="submit" name="add_user" class="btn-submit">
+                    <i class="fas fa-user-plus"></i> Créer le compte employé
+                </button>
+            </form>
+        </section>
         
+        <!-- Liste des utilisateurs existants -->
         <div class="table-container">
             <div class="table-header">
                 <h2>Liste des Employés</h2>
@@ -119,6 +359,22 @@ $users = getAllUsers();
     
     <script src="js/script.js"></script>
     <script>
+        // Fonction pour basculer la visibilité du mot de passe
+        function togglePasswordVisibility(inputId) {
+            const input = document.getElementById(inputId);
+            const icon = input.parentNode.querySelector('.toggle-icon i');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+
         // Fonction pour supprimer un utilisateur
         function deleteUser(userId, userName) {
             if (confirm(`Êtes-vous sûr de vouloir supprimer l'utilisateur "${userName}" ?\n\nCette action est irréversible et supprimera également toutes ses données de présence.`)) {

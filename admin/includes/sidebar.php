@@ -4,7 +4,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 ?>
 <div class="sidebar">
     <div class="sidebar-header">
-        <h2>Batobaye</h2>
+        <h2>Ziris</h2>
         <p style="font-size: 12px; color: var(--gray); margin-top: 5px;">Système de Présence</p>
     </div>
     
@@ -49,7 +49,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <i class="fas fa-history"></i>
             <span>Historique</span>
         </a>
-        
+        <a href="salaire.php" class="menu-item <?php echo $current_page == 'salaire.php' ? 'active' : ''; ?>">
+            <i class="fas fa-history"></i>
+            <span>salaire</span>
+        </a>
         <a href="profile.php" class="menu-item <?php echo $current_page == 'profile.php' ? 'active' : ''; ?>">
             <i class="fas fa-user-cog"></i>
             <span>Profil Admin</span>

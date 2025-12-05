@@ -1,14 +1,13 @@
 <?php
 session_start();
 
-// Vérifier si la base de données existe
 try {
-    $pdo = new PDO("mysql:host=localhost", 'globall1_tonton', 'F4t5sef8');
+    $pdo = new PDO("mysql:host=localhost", 'root', '');
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
-    // Créer la base de données si elle n'existe pas
-    $pdo->exec("CREATE DATABASE IF NOT EXISTS globall1_ziris");
-    $pdo->exec("USE globall1_ziris");
+    $pdo->exec("CREATE DATABASE IF NOT EXISTS systeme_presence");
+    $pdo->exec("USE systeme_presence");
+
 } catch(PDOException $e) {
     die("Erreur de connexion: " . $e->getMessage());
 }
@@ -22,11 +21,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (!empty($email) && !empty($password)) {
         try {
-            // Vérifier si la table users existe
             $tableExists = $pdo->query("SHOW TABLES LIKE 'users'")->rowCount() > 0;
             
             if (!$tableExists) {
-                // Créer les tables si elles n'existent pas
                 createDatabaseTables($pdo);
             }
             
