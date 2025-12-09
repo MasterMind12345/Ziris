@@ -14,6 +14,17 @@ if ($admin && isset($admin['nom'])) {
     }
     $initials = substr($initials, 0, 2);
 }
+if (!isset($preferences)) {
+    try {
+        $stmt = $pdo->prepare("SELECT theme FROM user_preferences WHERE user_id = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+        $preferences = $stmt->fetch();
+    } catch(PDOException $e) {
+        $preferences = ['theme' => 'light'];
+    }
+}
+
+$currentTheme = $preferences['theme'] ?? 'light';
 ?>
 <header class="header">
     <div class="header-left">

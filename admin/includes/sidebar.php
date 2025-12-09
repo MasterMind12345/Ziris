@@ -18,6 +18,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <i class="fas fa-users"></i>
             <span>Gestion des Utilisateurs</span>
         </a>
+
         
         <a href="postes.php" class="menu-item <?php echo $current_page == 'postes.php' ? 'active' : ''; ?>">
             <i class="fas fa-briefcase"></i>
@@ -27,6 +28,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <a href="presences.php" class="menu-item <?php echo $current_page == 'presences.php' ? 'active' : ''; ?>">
             <i class="fas fa-clipboard-check"></i>
             <span>Suivi des Présences</span>
+        </a>
+
+      <a href="theme.php" class="menu-item <?php echo $current_page == 'theme.php' ? 'active' : ''; ?>">
+            <i class="fas fa-paint-brush"></i>
+            <span>Personnaliser le Thème</span>
         </a>
         
         <!-- NOUVEAU : Gestion des Absences -->
@@ -66,3 +72,23 @@ $current_page = basename($_SERVER['PHP_SELF']);
         </div>
     </nav>
 </div>
+<style>
+    .sidebar {
+        background-color: var(--bg-card);
+        color: var(--text-primary);
+    }
+    
+    .sidebar-header h2 {
+        color: var(--text-primary);
+    }
+    
+    .sidebar-menu .menu-item {
+        color: var(--text-secondary);
+    }
+    
+    .sidebar-menu .menu-item:hover,
+    .sidebar-menu .menu-item.active {
+        color: var(--primary);
+        background-color: var(--bg-secondary);
+    }
+</style>
