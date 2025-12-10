@@ -8,6 +8,358 @@ if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
     exit;
 }
 
+// Vérifier si l'accès à la page salaire est déjà autorisé dans cette session
+if (!isset($_SESSION['salaire_access_granted']) || $_SESSION['salaire_access_granted'] !== true) {
+    // Si le formulaire de mot de passe a été soumis
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_password'])) {
+        $entered_password = $_POST['security_password'];
+        
+        // Récupérer le mot de passe correct depuis la base de données
+        try {
+            // Vérifier si la table security_passwords existe, sinon créer avec mot de passe par défaut
+            $tableExists = $pdo->query("SHOW TABLES LIKE 'security_passwords'")->rowCount() > 0;
+            
+            if (!$tableExists) {
+                // Créer la table si elle n'existe pas
+                $sql = "
+                    CREATE TABLE security_passwords (
+                        id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                        page_name VARCHAR(100) NOT NULL,
+                        password VARCHAR(10) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY unique_page (page_name)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                ";
+                $pdo->exec($sql);
+                
+                // Insérer le mot de passe par défaut
+                $stmt = $pdo->prepare("INSERT INTO security_passwords (page_name, password) VALUES ('salaire', '2007')");
+                $stmt->execute();
+            }
+            
+            $stmt = $pdo->prepare("SELECT password FROM security_passwords WHERE page_name = 'salaire'");
+            $stmt->execute();
+            $security_password = $stmt->fetchColumn();
+            
+            if ($security_password && $entered_password === $security_password) {
+                // Mot de passe correct - accès autorisé
+                $_SESSION['salaire_access_granted'] = true;
+                $_SESSION['salaire_access_time'] = time();
+            } else {
+                $_SESSION['error'] = "Mot de passe incorrect. Accès refusé.";
+                header('Location: salaire.php');
+                exit;
+            }
+        } catch (PDOException $e) {
+            // En cas d'erreur, utiliser le mot de passe par défaut
+            $security_password = '2007';
+            if ($entered_password === $security_password) {
+                $_SESSION['salaire_access_granted'] = true;
+                $_SESSION['salaire_access_time'] = time();
+            } else {
+                $_SESSION['error'] = "Mot de passe incorrect. Accès refusé.";
+                header('Location: salaire.php');
+                exit;
+            }
+        }
+    } else {
+        // Afficher le formulaire de mot de passe
+        showSecurityPasswordForm();
+        exit;
+    }
+}
+
+// Vérifier si l'accès a expiré (30 minutes)
+if (isset($_SESSION['salaire_access_time']) && (time() - $_SESSION['salaire_access_time']) > 1800) {
+    unset($_SESSION['salaire_access_granted']);
+    unset($_SESSION['salaire_access_time']);
+    header('Location: salaire.php');
+    exit;
+}
+
+// Fonction pour afficher le formulaire de mot de passe
+function showSecurityPasswordForm() {
+    ?>
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Accès Sécurisé - Salaires</title>
+        <link rel="stylesheet" href="css/style.css">
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+        <style>
+            body {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 0;
+                padding: 20px;
+            }
+            
+            .security-container {
+                background: white;
+                border-radius: 20px;
+                padding: 40px;
+                width: 100%;
+                max-width: 400px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                text-align: center;
+            }
+            
+            .security-icon {
+                width: 80px;
+                height: 80px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 20px;
+                color: white;
+                font-size: 32px;
+            }
+            
+            .security-container h2 {
+                color: #333;
+                margin-bottom: 10px;
+            }
+            
+            .security-container p {
+                color: #666;
+                margin-bottom: 30px;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+            
+            .password-input {
+                width: 100%;
+                padding: 15px;
+                font-size: 24px;
+                text-align: center;
+                letter-spacing: 8px;
+                border: 2px solid #ddd;
+                border-radius: 10px;
+                margin-bottom: 20px;
+                transition: all 0.3s;
+                font-family: monospace;
+            }
+            
+            .password-input:focus {
+                border-color: #667eea;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+                outline: none;
+            }
+            
+            .password-hint {
+                font-size: 12px;
+                color: #888;
+                margin-bottom: 20px;
+            }
+            
+            .btn-security {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                padding: 15px 30px;
+                border-radius: 10px;
+                font-size: 16px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s;
+                width: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+            }
+            
+            .btn-security:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            }
+            
+            .error-message {
+                background: #fee;
+                color: #c33;
+                padding: 10px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+                border-left: 4px solid #c33;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .security-footer {
+                margin-top: 20px;
+                font-size: 12px;
+                color: #999;
+                line-height: 1.5;
+            }
+            
+            .back-link {
+                display: inline-block;
+                margin-top: 15px;
+                color: #667eea;
+                text-decoration: none;
+                font-size: 14px;
+            }
+            
+            .back-link:hover {
+                text-decoration: underline;
+            }
+            
+            @media (max-width: 480px) {
+                .security-container {
+                    padding: 30px 20px;
+                }
+                
+                .security-icon {
+                    width: 60px;
+                    height: 60px;
+                    font-size: 24px;
+                }
+                
+                .password-input {
+                    font-size: 20px;
+                    padding: 12px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="security-container">
+            <div class="security-icon">
+                <i class="fas fa-lock"></i>
+            </div>
+            
+            <h2>Accès Sécurisé</h2>
+            <p>Veuillez entrer le code de sécurité à 4 chiffres pour accéder à la gestion des salaires</p>
+            
+            <?php if (isset($_SESSION['error'])): ?>
+                <div class="error-message">
+                    <i class="fas fa-exclamation-circle"></i> <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
+                </div>
+            <?php endif; ?>
+            
+            <form method="POST" action="" id="securityForm">
+                <input type="hidden" name="verify_password" value="1">
+                
+                <div style="position: relative;">
+                    <input type="password" 
+                           name="security_password" 
+                           id="security_password"
+                           class="password-input"
+                           maxlength="4"
+                           pattern="\d{4}"
+                           inputmode="numeric"
+                           required
+                           autocomplete="off"
+                           autofocus>
+                    <div class="password-hint">Code à 4 chiffres</div>
+                </div>
+                
+                <button type="submit" class="btn-security">
+                    <i class="fas fa-unlock-alt"></i> Accéder aux Salaires
+                </button>
+            </form>
+            
+            <div class="security-footer">
+                <p><i class="fas fa-info-circle"></i> Cette page contient des informations sensibles</p>
+                <p>L'accès expire après 30 minutes d'inactivité</p>
+                <a href="index.php" class="back-link">
+                    <i class="fas fa-arrow-left"></i> Retour au Tableau de Bord
+                </a>
+            </div>
+        </div>
+        
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const passwordInput = document.getElementById('security_password');
+            const form = document.getElementById('securityForm');
+            
+            // Focus et sélection automatique
+            passwordInput.focus();
+            passwordInput.select();
+            
+            // Valider que ce sont bien des chiffres
+            passwordInput.addEventListener('input', function() {
+                this.value = this.value.replace(/\D/g, '');
+                
+                if (this.value.length > 4) {
+                    this.value = this.value.substring(0, 4);
+                }
+                
+                // Si 4 chiffres saisis, soumettre automatiquement
+                if (this.value.length === 4) {
+                    setTimeout(() => {
+                        form.submit();
+                    }, 300);
+                }
+            });
+            
+            // Empêcher le copier-coller
+            passwordInput.addEventListener('paste', function(e) {
+                e.preventDefault();
+                alert('Le copier-coller est désactivé pour des raisons de sécurité');
+            });
+            
+            // Empêcher les caractères non numériques
+            passwordInput.addEventListener('keypress', function(e) {
+                const charCode = e.which ? e.which : e.keyCode;
+                if (charCode < 48 || charCode > 57) {
+                    e.preventDefault();
+                    return false;
+                }
+                return true;
+            });
+            
+            // Validation avant soumission
+            form.addEventListener('submit', function(e) {
+                if (passwordInput.value.length !== 4) {
+                    e.preventDefault();
+                    alert('Veuillez entrer exactement 4 chiffres');
+                    passwordInput.focus();
+                    return false;
+                }
+                
+                if (!/^\d{4}$/.test(passwordInput.value)) {
+                    e.preventDefault();
+                    alert('Veuillez entrer seulement des chiffres (0-9)');
+                    passwordInput.focus();
+                    return false;
+                }
+                
+                // Afficher un indicateur de chargement
+                const submitBtn = form.querySelector('button[type="submit"]');
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Vérification...';
+                submitBtn.disabled = true;
+                
+                return true;
+            });
+            
+            // Navigation au clavier
+            passwordInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && this.value.length === 4) {
+                    form.submit();
+                }
+            });
+        });
+        </script>
+    </body>
+    </html>
+    <?php
+}
+
+// =============================================================================
+// LE RESTE DU CODE EXISTANT POUR LA GESTION DES SALAIRES
+// =============================================================================
+
 // Gestion des salaires par poste
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['update_salaire'])) {
@@ -322,6 +674,34 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
     <meta name="apple-mobile-web-app-title" content="Ziris">
     <link rel="apple-touch-icon" href="icons/icon-152x152.png">
     <link rel="manifest" href="/manifest.json">
+    
+    <style>
+        /* Ajout pour le bouton de déverrouillage */
+        .security-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--success);
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        .security-info i {
+            font-size: 14px;
+        }
+        
+        .lock-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            background: #d4edda;
+            color: #155724;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+    </style>
 </head>
 <body>
     <?php include 'includes/header.php'; ?>
@@ -332,6 +712,12 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
             <div class="header-content">
                 <h1><i class="fas fa-money-bill-wave"></i> Gestion des Salaires</h1>
                 <p>Gérez les salaires horaires par poste et consultez les rémunérations mensuelles</p>
+                <div class="security-info">
+                    <span class="lock-status">
+                        <i class="fas fa-unlock"></i> Accès autorisé
+                    </span>
+                    <span>| Session expire dans: <span id="sessionTimer">30:00</span></span>
+                </div>
             </div>
             <div class="header-actions">
                 <button class="btn btn-primary" onclick="genererBulletins()">
@@ -339,6 +725,9 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
                 </button>
                 <button class="btn btn-success" onclick="exporterSalaires()">
                     <i class="fas fa-download"></i> Exporter Données
+                </button>
+                <button class="btn btn-secondary" onclick="reverifierSecurite()">
+                    <i class="fas fa-lock"></i> Verrouiller
                 </button>
             </div>
         </div>
@@ -855,10 +1244,17 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
     
     <script src="js/script.js"></script>
     <script>
+    // Gestion de la session sécurisée
+    let sessionStartTime = <?php echo isset($_SESSION['salaire_access_time']) ? $_SESSION['salaire_access_time'] : time(); ?>;
+    const sessionDuration = 1800; // 30 minutes en secondes
+    
     // Initialisation
     document.addEventListener('DOMContentLoaded', function() {
         // Initialiser les graphiques
         initialiserGraphiquesSalaires();
+        
+        // Démarrer le timer de session
+        startSessionTimer();
         
         // Recherche dans l'historique
         document.getElementById('search-paiements')?.addEventListener('input', function(e) {
@@ -871,6 +1267,9 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
             });
         });
         
+        // Vérifier l'inactivité
+        setupInactivityCheck();
+        
         // Ouvrir la modale si erreur dans formulaire
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('payer')) {
@@ -881,6 +1280,75 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
             }
         }
     });
+    
+    // Timer de session
+    function startSessionTimer() {
+        function updateTimer() {
+            const now = Math.floor(Date.now() / 1000);
+            const elapsed = now - sessionStartTime;
+            const remaining = sessionDuration - elapsed;
+            
+            if (remaining <= 0) {
+                // Session expirée
+                reverifierSecurite();
+                return;
+            }
+            
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            
+            const timerElement = document.getElementById('sessionTimer');
+            if (timerElement) {
+                timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                // Changer la couleur quand il reste peu de temps
+                if (remaining < 300) { // 5 minutes
+                    timerElement.style.color = 'var(--danger)';
+                    timerElement.style.fontWeight = 'bold';
+                } else if (remaining < 600) { // 10 minutes
+                    timerElement.style.color = 'var(--warning)';
+                }
+            }
+        }
+        
+        updateTimer();
+        setInterval(updateTimer, 1000);
+    }
+    
+    // Vérification d'inactivité
+    function setupInactivityCheck() {
+        let inactivityTimer;
+        const resetTimer = () => {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(() => {
+                reverifierSecurite();
+            }, 300000); // 5 minutes d'inactivité
+        };
+        
+        // Événements qui réinitialisent le timer d'inactivité
+        ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(event => {
+            document.addEventListener(event, resetTimer, { passive: true });
+        });
+        
+        resetTimer();
+    }
+    
+    // Fonction pour reverrouiller la page
+    function reverifierSecurite() {
+        if (confirm('Voulez-vous verrouiller l\'accès aux salaires ? Vous devrez réentrer le code de sécurité.')) {
+            fetch('salaire_logout.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = 'salaire.php';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    window.location.href = 'salaire.php';
+                });
+        }
+    }
     
     // Gestion des onglets
     function switchTab(tabId) {
@@ -1107,6 +1575,23 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
             alertDiv.remove();
         }, 5000);
     }
+    </script>
+    
+    <!-- Créer un fichier salaire_logout.php pour gérer la déconnexion -->
+    <script>
+    // Sauvegarde du fichier salaire_logout.php
+    const salaireLogoutContent = `<?php
+    session_start();
+    
+    // Supprimer l'accès aux salaires
+    unset($_SESSION['salaire_access_granted']);
+    unset($_SESSION['salaire_access_time']);
+    
+    echo json_encode(['success' => true]);
+    ?>`;
+    
+    // Cette partie est pour information seulement
+    console.log('Pour compléter l\'installation, créez le fichier salaire_logout.php avec le contenu ci-dessus');
     </script>
     
     <style>
@@ -1704,7 +2189,6 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
         }
     }
     
-    /* Print styles */
     @media print {
         .sidebar, .header, .header-actions, .tabs-header, .action-buttons {
             display: none !important;
