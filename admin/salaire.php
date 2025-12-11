@@ -3,669 +3,244 @@ session_start();
 require_once '../config/database.php';
 require_once 'includes/functions.php';
 
+// Vérifier si l'utilisateur est connecté et est admin
 if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
     header('Location: ../login.php');
     exit;
 }
 
-// Vérifier si l'accès à la page salaire est déjà autorisé dans cette session
-if (!isset($_SESSION['salaire_access_granted']) || $_SESSION['salaire_access_granted'] !== true) {
-    // Si le formulaire de mot de passe a été soumis
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_password'])) {
-        $entered_password = $_POST['security_password'];
-        
-        // Récupérer le mot de passe correct depuis la base de données
-        try {
-            // Vérifier si la table security_passwords existe, sinon créer avec mot de passe par défaut
-            $tableExists = $pdo->query("SHOW TABLES LIKE 'security_passwords'")->rowCount() > 0;
-            
-            if (!$tableExists) {
-                // Créer la table si elle n'existe pas
-                $sql = "
-                    CREATE TABLE security_passwords (
-                        id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                        page_name VARCHAR(100) NOT NULL,
-                        password VARCHAR(10) NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        UNIQUE KEY unique_page (page_name)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-                ";
-                $pdo->exec($sql);
-                
-                // Insérer le mot de passe par défaut
-                $stmt = $pdo->prepare("INSERT INTO security_passwords (page_name, password) VALUES ('salaire', '2007')");
-                $stmt->execute();
-            }
-            
-            $stmt = $pdo->prepare("SELECT password FROM security_passwords WHERE page_name = 'salaire'");
-            $stmt->execute();
-            $security_password = $stmt->fetchColumn();
-            
-            if ($security_password && $entered_password === $security_password) {
-                // Mot de passe correct - accès autorisé
-                $_SESSION['salaire_access_granted'] = true;
-                $_SESSION['salaire_access_time'] = time();
-            } else {
-                $_SESSION['error'] = "Mot de passe incorrect. Accès refusé.";
-                header('Location: salaire.php');
-                exit;
-            }
-        } catch (PDOException $e) {
-            // En cas d'erreur, utiliser le mot de passe par défaut
-            $security_password = '2007';
-            if ($entered_password === $security_password) {
-                $_SESSION['salaire_access_granted'] = true;
-                $_SESSION['salaire_access_time'] = time();
-            } else {
-                $_SESSION['error'] = "Mot de passe incorrect. Accès refusé.";
-                header('Location: salaire.php');
-                exit;
-            }
-        }
-    } else {
-        // Afficher le formulaire de mot de passe
-        showSecurityPasswordForm();
-        exit;
+// Récupérer les préférences utilisateur
+try {
+    $stmt = $pdo->prepare("SELECT * FROM user_preferences WHERE user_id = ?");
+    $stmt->execute([$_SESSION['user_id']]);
+    $preferences = $stmt->fetch();
+    
+    if (!$preferences) {
+        $stmt = $pdo->prepare("INSERT INTO user_preferences (user_id, theme, font_size, notifications) VALUES (?, 'light', 'medium', 1)");
+        $stmt->execute([$_SESSION['user_id']]);
+        $stmt = $pdo->prepare("SELECT * FROM user_preferences WHERE user_id = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+        $preferences = $stmt->fetch();
     }
+} catch(PDOException $e) {
+    $preferences = ['theme' => 'light', 'font_size' => 'medium', 'notifications' => 1];
 }
 
-// Vérifier si l'accès a expiré (30 minutes)
-if (isset($_SESSION['salaire_access_time']) && (time() - $_SESSION['salaire_access_time']) > 1800) {
-    unset($_SESSION['salaire_access_granted']);
-    unset($_SESSION['salaire_access_time']);
-    header('Location: salaire.php');
-    exit;
+$currentTheme = $preferences['theme'] ?? 'light';
+
+// Message de notification
+$message = '';
+$message_type = '';
+
+// Vérifier si la table parametres_salaire existe, sinon la créer
+try {
+    $tableExists = $pdo->query("SHOW TABLES LIKE 'parametres_salaire'")->rowCount() > 0;
+    
+    if (!$tableExists) {
+        $pdo->exec("
+            CREATE TABLE parametres_salaire (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                poste_id INT NOT NULL,
+                salaire_brut_mensuel DECIMAL(10,2) NOT NULL,
+                jours_travail_mois INT NOT NULL DEFAULT 22,
+                heures_travail_jour DECIMAL(4,2) NOT NULL DEFAULT 8.0,
+                salaire_horaire DECIMAL(10,2) GENERATED ALWAYS AS (salaire_brut_mensuel / (jours_travail_mois * heures_travail_jour)) STORED,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (poste_id) REFERENCES postes(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_poste (poste_id)
+            )
+        ");
+    }
+} catch(PDOException $e) {
+    error_log("Erreur création table salaire: " . $e->getMessage());
 }
 
-// Fonction pour afficher le formulaire de mot de passe
-function showSecurityPasswordForm() {
-    ?>
-    <!DOCTYPE html>
-    <html lang="fr">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Accès Sécurisé - Salaires</title>
-        <link rel="stylesheet" href="css/style.css">
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-        <style>
-            body {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                margin: 0;
-                padding: 20px;
-            }
-            
-            .security-container {
-                background: white;
-                border-radius: 20px;
-                padding: 40px;
-                width: 100%;
-                max-width: 400px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                text-align: center;
-            }
-            
-            .security-icon {
-                width: 80px;
-                height: 80px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0 auto 20px;
-                color: white;
-                font-size: 32px;
-            }
-            
-            .security-container h2 {
-                color: #333;
-                margin-bottom: 10px;
-            }
-            
-            .security-container p {
-                color: #666;
-                margin-bottom: 30px;
-                font-size: 14px;
-                line-height: 1.5;
-            }
-            
-            .password-input {
-                width: 100%;
-                padding: 15px;
-                font-size: 24px;
-                text-align: center;
-                letter-spacing: 8px;
-                border: 2px solid #ddd;
-                border-radius: 10px;
-                margin-bottom: 20px;
-                transition: all 0.3s;
-                font-family: monospace;
-            }
-            
-            .password-input:focus {
-                border-color: #667eea;
-                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-                outline: none;
-            }
-            
-            .password-hint {
-                font-size: 12px;
-                color: #888;
-                margin-bottom: 20px;
-            }
-            
-            .btn-security {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                border: none;
-                padding: 15px 30px;
-                border-radius: 10px;
-                font-size: 16px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.3s;
-                width: 100%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 10px;
-            }
-            
-            .btn-security:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-            }
-            
-            .error-message {
-                background: #fee;
-                color: #c33;
-                padding: 10px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-                border-left: 4px solid #c33;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            
-            .security-footer {
-                margin-top: 20px;
-                font-size: 12px;
-                color: #999;
-                line-height: 1.5;
-            }
-            
-            .back-link {
-                display: inline-block;
-                margin-top: 15px;
-                color: #667eea;
-                text-decoration: none;
-                font-size: 14px;
-            }
-            
-            .back-link:hover {
-                text-decoration: underline;
-            }
-            
-            @media (max-width: 480px) {
-                .security-container {
-                    padding: 30px 20px;
-                }
-                
-                .security-icon {
-                    width: 60px;
-                    height: 60px;
-                    font-size: 24px;
-                }
-                
-                .password-input {
-                    font-size: 20px;
-                    padding: 12px;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="security-container">
-            <div class="security-icon">
-                <i class="fas fa-lock"></i>
-            </div>
-            
-            <h2>Accès Sécurisé</h2>
-            <p>Veuillez entrer le code de sécurité à 4 chiffres pour accéder à la gestion des salaires</p>
-            
-            <?php if (isset($_SESSION['error'])): ?>
-                <div class="error-message">
-                    <i class="fas fa-exclamation-circle"></i> <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
-                </div>
-            <?php endif; ?>
-            
-            <form method="POST" action="" id="securityForm">
-                <input type="hidden" name="verify_password" value="1">
-                
-                <div style="position: relative;">
-                    <input type="password" 
-                           name="security_password" 
-                           id="security_password"
-                           class="password-input"
-                           maxlength="4"
-                           pattern="\d{4}"
-                           inputmode="numeric"
-                           required
-                           autocomplete="off"
-                           autofocus>
-                    <div class="password-hint">Code à 4 chiffres</div>
-                </div>
-                
-                <button type="submit" class="btn-security">
-                    <i class="fas fa-unlock-alt"></i> Accéder aux Salaires
-                </button>
-            </form>
-            
-            <div class="security-footer">
-                <p><i class="fas fa-info-circle"></i> Cette page contient des informations sensibles</p>
-                <p>L'accès expire après 30 minutes d'inactivité</p>
-                <a href="index.php" class="back-link">
-                    <i class="fas fa-arrow-left"></i> Retour au Tableau de Bord
-                </a>
-            </div>
-        </div>
-        
-        <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const passwordInput = document.getElementById('security_password');
-            const form = document.getElementById('securityForm');
-            
-            // Focus et sélection automatique
-            passwordInput.focus();
-            passwordInput.select();
-            
-            // Valider que ce sont bien des chiffres
-            passwordInput.addEventListener('input', function() {
-                this.value = this.value.replace(/\D/g, '');
-                
-                if (this.value.length > 4) {
-                    this.value = this.value.substring(0, 4);
-                }
-                
-                // Si 4 chiffres saisis, soumettre automatiquement
-                if (this.value.length === 4) {
-                    setTimeout(() => {
-                        form.submit();
-                    }, 300);
-                }
-            });
-            
-            // Empêcher le copier-coller
-            passwordInput.addEventListener('paste', function(e) {
-                e.preventDefault();
-                alert('Le copier-coller est désactivé pour des raisons de sécurité');
-            });
-            
-            // Empêcher les caractères non numériques
-            passwordInput.addEventListener('keypress', function(e) {
-                const charCode = e.which ? e.which : e.keyCode;
-                if (charCode < 48 || charCode > 57) {
-                    e.preventDefault();
-                    return false;
-                }
-                return true;
-            });
-            
-            // Validation avant soumission
-            form.addEventListener('submit', function(e) {
-                if (passwordInput.value.length !== 4) {
-                    e.preventDefault();
-                    alert('Veuillez entrer exactement 4 chiffres');
-                    passwordInput.focus();
-                    return false;
-                }
-                
-                if (!/^\d{4}$/.test(passwordInput.value)) {
-                    e.preventDefault();
-                    alert('Veuillez entrer seulement des chiffres (0-9)');
-                    passwordInput.focus();
-                    return false;
-                }
-                
-                // Afficher un indicateur de chargement
-                const submitBtn = form.querySelector('button[type="submit"]');
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Vérification...';
-                submitBtn.disabled = true;
-                
-                return true;
-            });
-            
-            // Navigation au clavier
-            passwordInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && this.value.length === 4) {
-                    form.submit();
-                }
-            });
-        });
-        </script>
-    </body>
-    </html>
-    <?php
-}
-
-// =============================================================================
-// LE RESTE DU CODE EXISTANT POUR LA GESTION DES SALAIRES
-// =============================================================================
-
-// Gestion des salaires par poste
+// Traitement des formulaires
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['update_salaire'])) {
-        $poste_id = $_POST['poste_id'];
-        $salaire_heure = $_POST['salaire_heure'];
-        
-        // Mettre à jour le salaire horaire dans la table postes
-        try {
-            $stmt = $pdo->prepare("UPDATE postes SET salaire_heure = ? WHERE id = ?");
-            $stmt->execute([$salaire_heure, $poste_id]);
-            
-            $_SESSION['success'] = "Salaire horaire mis à jour avec succès!";
-        } catch (PDOException $e) {
-            $_SESSION['error'] = "Erreur lors de la mise à jour: " . $e->getMessage();
-        }
-    } elseif (isset($_POST['paiement_mensuel'])) {
-        $user_id = $_POST['user_id'];
-        $mois = $_POST['mois'];
-        $annee = $_POST['annee'];
-        $montant = $_POST['montant'];
-        $statut = $_POST['statut'];
-        
-        // Enregistrer le paiement
-        try {
-            $stmt = $pdo->prepare("
-                INSERT INTO salaires_paiements (user_id, mois, annee, montant, statut, date_paiement)
-                VALUES (?, ?, ?, ?, ?, NOW())
-                ON DUPLICATE KEY UPDATE 
-                montant = VALUES(montant), 
-                statut = VALUES(statut), 
-                date_paiement = NOW()
-            ");
-            $stmt->execute([$user_id, $mois, $annee, $montant, $statut]);
-            
-            $_SESSION['success'] = "Paiement enregistré avec succès!";
-        } catch (PDOException $e) {
-            $_SESSION['error'] = "Erreur lors de l'enregistrement: " . $e->getMessage();
-        }
-    }
-}
-
-// Récupérer les postes avec salaires
-function getPostesAvecSalaires() {
-    global $pdo;
+    $action = $_POST['action'] ?? '';
+    
     try {
-        $stmt = $pdo->query("SELECT * FROM postes ORDER BY nom");
-        return $stmt->fetchAll();
-    } catch (PDOException $e) {
-        error_log("Erreur getPostesAvecSalaires: " . $e->getMessage());
-        return [];
+        if ($action === 'configurer_poste') {
+            $poste_id = $_POST['poste_id'] ?? '';
+            $salaire_brut_mensuel = floatval($_POST['salaire_brut_mensuel'] ?? 0);
+            $jours_travail_mois = intval($_POST['jours_travail_mois'] ?? 22);
+            $heures_travail_jour = floatval($_POST['heures_travail_jour'] ?? 8.0);
+            
+            if (!empty($poste_id) && $salaire_brut_mensuel > 0 && $jours_travail_mois > 0 && $heures_travail_jour > 0) {
+                // Vérifier si une configuration existe déjà
+                $stmt = $pdo->prepare("SELECT id FROM parametres_salaire WHERE poste_id = ?");
+                $stmt->execute([$poste_id]);
+                $existing = $stmt->fetch();
+                
+                if ($existing) {
+                    // Mettre à jour
+                    $stmt = $pdo->prepare("
+                        UPDATE parametres_salaire 
+                        SET salaire_brut_mensuel = ?, jours_travail_mois = ?, heures_travail_jour = ?, updated_at = NOW()
+                        WHERE poste_id = ?
+                    ");
+                    $stmt->execute([$salaire_brut_mensuel, $jours_travail_mois, $heures_travail_jour, $poste_id]);
+                    $message = "Configuration de salaire mise à jour avec succès!";
+                } else {
+                    // Insérer
+                    $stmt = $pdo->prepare("
+                        INSERT INTO parametres_salaire (poste_id, salaire_brut_mensuel, jours_travail_mois, heures_travail_jour)
+                        VALUES (?, ?, ?, ?)
+                    ");
+                    $stmt->execute([$poste_id, $salaire_brut_mensuel, $jours_travail_mois, $heures_travail_jour]);
+                    $message = "Configuration de salaire ajoutée avec succès!";
+                }
+                $message_type = 'success';
+            } else {
+                $message = "Veuillez remplir tous les champs obligatoires avec des valeurs valides";
+                $message_type = 'error';
+            }
+        }
+    } catch(PDOException $e) {
+        $message = "Erreur: " . $e->getMessage();
+        $message_type = 'error';
     }
 }
 
-// Récupérer les statistiques de salaires
-function getStatsSalaires() {
-    global $pdo;
+// Récupérer les données pour le tableau
+$salaireData = [];
+$currentMonth = date('Y-m');
+$monthStart = date('Y-m-01');
+$monthEnd = date('Y-m-t');
+
+try {
+    // Récupérer tous les utilisateurs (sauf admin) avec leurs postes et configurations de salaire
+    $stmt = $pdo->prepare("
+        SELECT 
+            u.id as user_id,
+            u.nom as user_nom,
+            u.email,
+            p.id as poste_id,
+            p.nom as poste_nom,
+            ps.salaire_brut_mensuel,
+            ps.jours_travail_mois,
+            ps.heures_travail_jour,
+            ps.salaire_horaire
+        FROM users u
+        LEFT JOIN postes p ON u.poste_id = p.id
+        LEFT JOIN parametres_salaire ps ON p.id = ps.poste_id
+        WHERE u.is_admin = 0
+        ORDER BY u.nom
+    ");
+    $stmt->execute();
+    $users = $stmt->fetchAll();
+    
+    // Pour chaque utilisateur, calculer les heures travaillées
+    foreach ($users as $user) {
+        // Calculer les heures travaillées pour le mois en cours
+        $stmt = $pdo->prepare("
+            SELECT 
+                COUNT(*) as jours_presents,
+                SUM(
+                    TIME_TO_SEC(
+                        TIMEDIFF(
+                            COALESCE(heure_fin_reel, '17:30:00'), 
+                            heure_debut_reel
+                        )
+                    ) / 3600 -
+                    COALESCE(
+                        TIME_TO_SEC(
+                            TIMEDIFF(
+                                COALESCE(fin_pause_reel, debut_pause_reel),
+                                COALESCE(debut_pause_reel, heure_debut_reel)
+                            )
+                        ) / 3600,
+                        0
+                    )
+                ) as heures_travail_mois,
+                SUM(retard_minutes) as retard_total_minutes
+            FROM presences
+            WHERE user_id = ?
+                AND date_presence BETWEEN ? AND ?
+                AND heure_debut_reel IS NOT NULL
+        ");
+        $stmt->execute([$user['user_id'], $monthStart, $monthEnd]);
+        $presenceData = $stmt->fetch();
+        
+        // Ajouter les données de présence à l'utilisateur
+        $user['jours_presents'] = $presenceData['jours_presents'] ?? 0;
+        $user['heures_travail_mois'] = round($presenceData['heures_travail_mois'] ?? 0, 2);
+        $user['retard_total_minutes'] = $presenceData['retard_total_minutes'] ?? 0;
+        
+        // Calculer le salaire brut
+        if ($user['salaire_horaire'] && $user['heures_travail_mois'] > 0) {
+            $user['salaire_brut'] = $user['heures_travail_mois'] * $user['salaire_horaire'];
+        } else {
+            $user['salaire_brut'] = 0;
+        }
+        
+        $salaireData[] = $user;
+    }
+    
+    // Récupérer tous les postes pour le formulaire
+    $stmt = $pdo->query("SELECT * FROM postes ORDER BY nom");
+    $allPostes = $stmt->fetchAll();
+    
+    // Récupérer les configurations de salaire existantes
+    $stmt = $pdo->query("
+        SELECT ps.*, p.nom as poste_nom 
+        FROM parametres_salaire ps
+        JOIN postes p ON ps.poste_id = p.id
+        ORDER BY p.nom
+    ");
+    $salaireConfigs = $stmt->fetchAll();
+    
+    // Statistiques globales
     $stats = [
-        'total_salaire_mensuel' => 0,
-        'moyenne_salaire_heure' => 0,
         'total_employes' => 0,
-        'progression_mensuelle' => 0
+        'total_salaire_brut' => 0,
+        'moyenne_salaire_horaire' => 0,
+        'postes_configures' => 0,
+        'total_heures_travail' => 0
     ];
     
-    try {
-        // Total des employés
-        $stmt = $pdo->query("SELECT COUNT(*) as total FROM users WHERE is_admin = 0");
-        $stats['total_employes'] = $stmt->fetch()['total'];
-        
-        // Salaire mensuel total estimé
-        $stmt = $pdo->query("
-            SELECT SUM(
-                COALESCE(p.salaire_heure, 0) * 
-                (
-                    SELECT COALESCE(SUM(
-                        TIME_TO_SEC(TIMEDIFF(heure_fin_reel, heure_debut_reel)) / 3600
-                    ), 0) 
-                    FROM presences pr 
-                    WHERE pr.user_id = u.id 
-                    AND MONTH(pr.date_presence) = MONTH(CURDATE())
-                    AND YEAR(pr.date_presence) = YEAR(CURDATE())
-                    AND heure_fin_reel IS NOT NULL
-                )
-            ) as total_salaire
-            FROM users u
-            LEFT JOIN postes p ON u.poste_id = p.id
-            WHERE u.is_admin = 0
-        ");
-        $result = $stmt->fetch();
-        $stats['total_salaire_mensuel'] = round($result['total_salaire'] ?? 0, 2);
-        
-        // Moyenne salaire horaire
-        $stmt = $pdo->query("
-            SELECT AVG(COALESCE(salaire_heure, 0)) as moyenne 
-            FROM postes 
-            WHERE salaire_heure > 0
-        ");
-        $result = $stmt->fetch();
-        $stats['moyenne_salaire_heure'] = round($result['moyenne'] ?? 0, 2);
-        
-        // Progression mensuelle
-        $stmt = $pdo->query("
-            SELECT (
-                SELECT SUM(
-                    COALESCE(p.salaire_heure, 0) * 
-                    (
-                        SELECT COALESCE(SUM(
-                            TIME_TO_SEC(TIMEDIFF(heure_fin_reel, heure_debut_reel)) / 3600
-                        ), 0) 
-                        FROM presences pr 
-                        WHERE pr.user_id = u.id 
-                        AND MONTH(pr.date_presence) = MONTH(CURDATE())
-                        AND YEAR(pr.date_presence) = YEAR(CURDATE())
-                    )
-                ) as total_courant
-                FROM users u
-                LEFT JOIN postes p ON u.poste_id = p.id
-                WHERE u.is_admin = 0
-            ) - (
-                SELECT SUM(
-                    COALESCE(p.salaire_heure, 0) * 
-                    (
-                        SELECT COALESCE(SUM(
-                            TIME_TO_SEC(TIMEDIFF(heure_fin_reel, heure_debut_reel)) / 3600
-                        ), 0) 
-                        FROM presences pr 
-                        WHERE pr.user_id = u.id 
-                        AND MONTH(pr.date_presence) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
-                        AND YEAR(pr.date_presence) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
-                    )
-                ) as total_precedent
-                FROM users u
-                LEFT JOIN postes p ON u.poste_id = p.id
-                WHERE u.is_admin = 0
-            ) as progression
-        ");
-        $result = $stmt->fetch();
-        $stats['progression_mensuelle'] = round($result['progression'] ?? 0, 2);
-        
-    } catch (PDOException $e) {
-        error_log("Erreur getStatsSalaires: " . $e->getMessage());
-    }
-    
-    return $stats;
-}
-
-// Récupérer les salaires des employés pour le mois en cours
-function getSalairesMensuels($mois = null, $annee = null) {
-    global $pdo;
-    
-    if ($mois === null) $mois = date('m');
-    if ($annee === null) $annee = date('Y');
-    
-    try {
-        $stmt = $pdo->prepare("
-            SELECT 
-                u.id as user_id,
-                u.nom,
-                u.email,
-                p.id as poste_id,
-                p.nom as poste_nom,
-                COALESCE(p.salaire_heure, 0) as salaire_heure,
-                (
-                    SELECT COALESCE(SUM(
-                        TIME_TO_SEC(TIMEDIFF(heure_fin_reel, heure_debut_reel)) / 3600
-                    ), 0) 
-                    FROM presences pr 
-                    WHERE pr.user_id = u.id 
-                    AND MONTH(pr.date_presence) = ?
-                    AND YEAR(pr.date_presence) = ?
-                    AND heure_fin_reel IS NOT NULL
-                ) as heures_travaillees,
-                (
-                    SELECT COUNT(DISTINCT date_presence)
-                    FROM presences pr 
-                    WHERE pr.user_id = u.id 
-                    AND MONTH(pr.date_presence) = ?
-                    AND YEAR(pr.date_presence) = ?
-                ) as jours_presents,
-                COALESCE(sp.montant, 0) as montant_paye,
-                COALESCE(sp.statut, 'non_paye') as statut_paiement,
-                sp.date_paiement
-            FROM users u
-            LEFT JOIN postes p ON u.poste_id = p.id
-            LEFT JOIN salaires_paiements sp ON u.id = sp.user_id 
-                AND sp.mois = ? 
-                AND sp.annee = ?
-            WHERE u.is_admin = 0
-            ORDER BY u.nom
-        ");
-        $stmt->execute([$mois, $annee, $mois, $annee, $mois, $annee]);
-        
-        $salaires = $stmt->fetchAll();
-        
-        // Calculer le salaire pour chaque employé
-        foreach ($salaires as &$salaire) {
-            $salaire['salaire_calcul'] = round($salaire['salaire_heure'] * $salaire['heures_travaillees'], 2);
-            $salaire['reste_a_payer'] = max(0, $salaire['salaire_calcul'] - $salaire['montant_paye']);
+    foreach ($salaireData as $data) {
+        $stats['total_employes']++;
+        $stats['total_heures_travail'] += $data['heures_travail_mois'];
+        if ($data['salaire_horaire']) {
+            $stats['total_salaire_brut'] += $data['salaire_brut'];
+            $stats['moyenne_salaire_horaire'] += $data['salaire_horaire'];
         }
-        
-        return $salaires;
-    } catch (PDOException $e) {
-        error_log("Erreur getSalairesMensuels: " . $e->getMessage());
-        return [];
     }
-}
-
-// Récupérer l'historique des paiements
-function getHistoriquePaiements($limit = 50) {
-    global $pdo;
     
-    try {
-        $stmt = $pdo->prepare("
-            SELECT 
-                sp.*,
-                u.nom,
-                p.nom as poste_nom,
-                MONTHNAME(STR_TO_DATE(CONCAT(sp.annee, '-', sp.mois, '-01'), '%Y-%m-%d')) as mois_nom
-            FROM salaires_paiements sp
-            JOIN users u ON sp.user_id = u.id
-            LEFT JOIN postes p ON u.poste_id = p.id
-            ORDER BY sp.date_paiement DESC
-            LIMIT :limit
-        ");
-        $stmt->bindValue(':limit', (int)$limit, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    } catch (PDOException $e) {
-        error_log("Erreur getHistoriquePaiements: " . $e->getMessage());
-        return [];
+    foreach ($salaireConfigs as $config) {
+        $stats['postes_configures']++;
     }
-}
-
-// Vérifier et créer la table salaires_paiements si nécessaire
-function verifierTableSalaires() {
-    global $pdo;
     
-    try {
-        // Vérifier si la table existe
-        $tableExists = $pdo->query("SHOW TABLES LIKE 'salaires_paiements'")->rowCount() > 0;
-        
-        if (!$tableExists) {
-            // Créer la table
-            $sql = "
-                CREATE TABLE salaires_paiements (
-                    id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT(11) NOT NULL,
-                    mois INT(2) NOT NULL,
-                    annee INT(4) NOT NULL,
-                    montant DECIMAL(10,2) NOT NULL DEFAULT 0,
-                    statut ENUM('paye', 'partiel', 'non_paye', 'retarde') DEFAULT 'non_paye',
-                    date_paiement DATETIME DEFAULT NULL,
-                    methode_paiement VARCHAR(50) DEFAULT 'virement',
-                    reference_paiement VARCHAR(100) DEFAULT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    UNIQUE KEY unique_paiement_mensuel (user_id, mois, annee),
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-            ";
-            $pdo->exec($sql);
-            
-            // Ajouter la colonne salaire_heure à la table postes si elle n'existe pas
-            $colonneExists = $pdo->query("
-                SHOW COLUMNS FROM postes LIKE 'salaire_heure'
-            ")->rowCount() > 0;
-            
-            if (!$colonneExists) {
-                $pdo->exec("ALTER TABLE postes ADD COLUMN salaire_heure DECIMAL(10,2) DEFAULT NULL AFTER description");
-            }
-            
-            return true;
-        }
-        
-        return true;
-    } catch (PDOException $e) {
-        error_log("Erreur verifierTableSalaires: " . $e->getMessage());
-        return false;
+    if ($stats['total_employes'] > 0) {
+        $stats['moyenne_salaire_horaire'] = $stats['moyenne_salaire_horaire'] / $stats['total_employes'];
     }
+    
+} catch(PDOException $e) {
+    error_log("Erreur récupération données salaire: " . $e->getMessage());
+    $salaireData = [];
+    $allPostes = [];
+    $salaireConfigs = [];
+    $stats = [
+        'total_employes' => 0,
+        'total_salaire_brut' => 0,
+        'moyenne_salaire_horaire' => 0,
+        'postes_configures' => 0,
+        'total_heures_travail' => 0
+    ];
 }
-
-// Vérifier la table des salaires
-verifierTableSalaires();
-
-// Récupérer les données
-$postes = getPostesAvecSalaires();
-$stats_salaires = getStatsSalaires();
-$salaires_mensuels = getSalairesMensuels();
-$historique_paiements = getHistoriquePaiements();
-
-// Mois et année actuels
-$mois_actuel = date('m');
-$annee_actuelle = date('Y');
-$mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
 ?>
-
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="<?php echo $currentTheme; ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestion des Salaires - Ziris Admin</title>
+    
+    <!-- Style CSS principal -->
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#4361ee"/>
@@ -674,32 +249,738 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
     <meta name="apple-mobile-web-app-title" content="Ziris">
     <link rel="apple-touch-icon" href="icons/icon-152x152.png">
     <link rel="manifest" href="/manifest.json">
-    
+
+    <!-- CSS personnalisé -->
     <style>
-        /* Ajout pour le bouton de déverrouillage */
-        .security-info {
+        :root {
+            --primary: #4361ee;
+            --primary-dark: #3a56d4;
+            --secondary: #7209b7;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --gray: #6c757d;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-card: #ffffff;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --border-color: #e9ecef;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+            --border-radius: 12px;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #121212;
+            --bg-secondary: #1e1e1e;
+            --bg-card: #2d2d2d;
+            --text-primary: #f8f9fa;
+            --text-secondary: #adb5bd;
+            --border-color: #404040;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .main-content {
+            background-color: var(--bg-primary);
+            padding: 20px;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* Page Header */
+        .page-header {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: var(--bg-card);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            animation: fadeIn 0.6s ease;
+        }
+
+        .page-header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .page-header p {
+            color: var(--text-secondary);
+            font-size: 16px;
+            margin: 0;
+        }
+
+        /* Content Grid */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 1024px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--border-radius);
+            padding: 25px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            animation: fadeIn 0.6s ease;
+        }
+
+        .card-header {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-header h2 {
+            font-size: 22px;
+            margin: 0;
+            color: var(--text-primary);
             display: flex;
             align-items: center;
             gap: 10px;
-            color: var(--success);
-            font-size: 12px;
-            margin-top: 5px;
         }
-        
-        .security-info i {
+
+        .card-header h2 i {
+            color: var(--primary);
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-primary);
             font-size: 14px;
         }
-        
-        .lock-status {
+
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-start;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
-            padding: 5px 10px;
-            background: #d4edda;
-            color: #155724;
-            border-radius: 20px;
-            font-size: 11px;
+            gap: 8px;
+            transition: var(--transition);
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: 0 4px 12px rgba(67, 97, 238, 0.2);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(67, 97, 238, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-primary);
+            border-color: var(--primary);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #0da271);
+            color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            transition: var(--transition);
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .stat-card .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .stat-card .stat-label {
+            font-size: 14px;
+            color: var(--text-secondary);
             font-weight: 500;
+        }
+
+        .stat-card .stat-icon {
+            color: var(--primary);
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+
+        /* Table Container */
+        .table-container {
+            background: var(--bg-card);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            animation: fadeIn 0.8s ease;
+            margin-bottom: 30px;
+        }
+
+        .table-header {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .table-header h2 {
+            margin: 0;
+            color: var(--text-primary);
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .table-header h2 i {
+            color: var(--primary);
+        }
+
+        .table-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .table-search {
+            width: 250px;
+            padding: 10px 16px;
+            padding-left: 40px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: var(--transition);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%236c757d' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: 12px center;
+            background-size: 16px;
+        }
+
+        .table-search:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org2000/svg' width='16' height='16' fill='%234361ee' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E");
+        }
+
+        /* Table Styling */
+        #salaireTable {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        #salaireTable thead {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        #salaireTable thead th {
+            padding: 16px 12px;
+            text-align: left;
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        #salaireTable tbody tr {
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border-color);
+            transition: var(--transition);
+        }
+
+        #salaireTable tbody tr:hover {
+            background: var(--bg-secondary);
+        }
+
+        #salaireTable tbody td {
+            padding: 14px 12px;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        /* Badges */
+        .badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .badge-primary {
+            background: linear-gradient(135deg, rgba(67, 97, 238, 0.1), rgba(67, 97, 238, 0.2));
+            color: var(--primary);
+            border: 1px solid rgba(67, 97, 238, 0.3);
+        }
+
+        .badge-success {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.2));
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-warning {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.2));
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .badge-danger {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.2));
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        /* Status indicators */
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: var(--bg-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-dot.active {
+            background-color: var(--success);
+        }
+
+        .status-dot.inactive {
+            background-color: var(--danger);
+        }
+
+        .status-dot.pending {
+            background-color: var(--warning);
+        }
+
+        /* Currency formatting */
+        .currency {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+        }
+
+        .currency-positive {
+            color: var(--success);
+        }
+
+        .currency-negative {
+            color: var(--danger);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            color: var(--text-secondary);
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+
+        .empty-state p {
+            font-size: 16px;
+            margin: 0 0 20px 0;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Table Footer */
+        .table-footer {
+            padding: 15px 20px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: var(--text-primary);
+        }
+
+        .close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: var(--transition);
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+
+        .close:hover {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+            text-align: right;
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideInRight 0.3s ease;
+            border: 1px solid;
+            background: var(--bg-card);
+        }
+
+        .alert-success {
+            border-color: rgba(16, 185, 129, 0.3);
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(16, 185, 129, 0.1));
+            color: var(--success);
+        }
+
+        .alert-error {
+            border-color: rgba(239, 68, 68, 0.3);
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), rgba(239, 68, 68, 0.1));
+            color: var(--danger);
+        }
+
+        .alert-warning {
+            border-color: rgba(245, 158, 11, 0.3);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.05), rgba(245, 158, 11, 0.1));
+            color: var(--warning);
+        }
+
+        .alert i {
+            font-size: 20px;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.6s ease forwards;
+            opacity: 0;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+            
+            .table-header {
+                flex-direction: column;
+                gap: 15px;
+                align-items: stretch;
+            }
+            
+            .table-actions {
+                flex-direction: column;
+                width: 100%;
+            }
+            
+            .table-search {
+                width: 100%;
+            }
+            
+            .page-header {
+                padding: 20px;
+            }
+            
+            .page-header h1 {
+                font-size: 24px;
+            }
+            
+            .form-actions {
+                flex-direction: column;
+            }
+            
+            .form-actions .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .card {
+                padding: 15px;
+            }
+            
+            #salaireTable {
+                display: block;
+                overflow-x: auto;
+            }
+            
+            .stat-card {
+                padding: 15px;
+            }
+            
+            .stat-card .stat-value {
+                font-size: 24px;
+            }
+        }
+
+        /* Loading State */
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+            position: relative;
+        }
+
+        .loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 30px;
+            height: 30px;
+            margin: -15px 0 0 -15px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Print Styles */
+        @media print {
+            .header, .sidebar, .form-actions, .table-actions {
+                display: none !important;
+            }
+            
+            .main-content {
+                padding: 0;
+            }
+            
+            .page-header, .card, .table-container {
+                box-shadow: none;
+                border: 1px solid #000;
+            }
+            
+            #salaireTable {
+                font-size: 12px;
+            }
         }
     </style>
 </head>
@@ -708,1501 +989,681 @@ $mois_nom = date('F', strtotime(date('Y-'.$mois_actuel.'-01')));
     <?php include 'includes/sidebar.php'; ?>
     
     <main class="main-content">
+        <!-- Page Header -->
         <div class="page-header">
-            <div class="header-content">
-                <h1><i class="fas fa-money-bill-wave"></i> Gestion des Salaires</h1>
-                <p>Gérez les salaires horaires par poste et consultez les rémunérations mensuelles</p>
-                <div class="security-info">
-                    <span class="lock-status">
-                        <i class="fas fa-unlock"></i> Accès autorisé
-                    </span>
-                    <span>| Session expire dans: <span id="sessionTimer">30:00</span></span>
-                </div>
-            </div>
-            <div class="header-actions">
-                <button class="btn btn-primary" onclick="genererBulletins()">
-                    <i class="fas fa-file-pdf"></i> Générer Bulletins
+            <h1><i class="fas fa-money-bill-wave"></i> Gestion des Salaires</h1>
+            <p>Gérez les salaires et les configurations de rémunération par poste</p>
+            <div class="filters" style="margin-top: 20px; display: flex; gap: 15px; align-items: center;">
+                <span class="badge badge-primary">
+                    <i class="fas fa-calendar-alt"></i> 
+                    Période : <?php echo date('F Y', strtotime($currentMonth)); ?>
+                </span>
+                <button class="btn btn-secondary btn-sm" onclick="changeMonth(-1)">
+                    <i class="fas fa-chevron-left"></i> Mois précédent
                 </button>
-                <button class="btn btn-success" onclick="exporterSalaires()">
-                    <i class="fas fa-download"></i> Exporter Données
-                </button>
-                <button class="btn btn-secondary" onclick="reverifierSecurite()">
-                    <i class="fas fa-lock"></i> Verrouiller
+                <button class="btn btn-secondary btn-sm" onclick="changeMonth(1)">
+                    Mois suivant <i class="fas fa-chevron-right"></i>
                 </button>
             </div>
         </div>
-        
-        <!-- Messages d'alerte -->
-        <?php if (isset($_SESSION['success'])): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
+
+        <!-- Alert Messages -->
+        <?php if ($message): ?>
+            <div class="alert alert-<?php echo $message_type; ?>">
+                <i class="fas fa-<?php echo $message_type === 'success' ? 'check' : ($message_type === 'error' ? 'exclamation' : 'info'); ?>-circle"></i>
+                <span><?php echo $message; ?></span>
             </div>
         <?php endif; ?>
-        
-        <?php if (isset($_SESSION['error'])): ?>
-            <div class="alert alert-error">
-                <i class="fas fa-exclamation-circle"></i> <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
-            </div>
-        <?php endif; ?>
-        
+
         <!-- Statistiques -->
         <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                    <i class="fas fa-money-bill-wave"></i>
-                </div>
-                <div class="stat-info">
-                    <h3><?php echo number_format($stats_salaires['total_salaire_mensuel'], 2, ',', ' '); ?> FCFA</h3>
-                    <p>Masse salariale mensuelle</p>
-                    <div class="stat-trend <?php echo $stats_salaires['progression_mensuelle'] >= 0 ? 'positive' : 'negative'; ?>">
-                        <i class="fas fa-arrow-<?php echo $stats_salaires['progression_mensuelle'] >= 0 ? 'up' : 'down'; ?>"></i>
-                        <?php echo abs($stats_salaires['progression_mensuelle']); ?> FCFA
-                    </div>
-                </div>
-            </div>
-            
-            <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-                    <i class="fas fa-clock"></i>
-                </div>
-                <div class="stat-info">
-                    <h3><?php echo number_format($stats_salaires['moyenne_salaire_heure'], 2, ',', ' '); ?> FCFA</h3>
-                    <p>Salaire horaire moyen</p>
-                    <div class="stat-label">Tous postes</div>
-                </div>
-            </div>
-            
-            <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+            <div class="stat-card fade-in">
+                <div class="stat-icon">
                     <i class="fas fa-users"></i>
                 </div>
-                <div class="stat-info">
-                    <h3><?php echo $stats_salaires['total_employes']; ?></h3>
-                    <p>Employés à rémunérer</p>
-                    <div class="stat-label"><?php echo count(array_filter($salaires_mensuels, fn($s) => $s['salaire_calcul'] > 0)); ?> avec salaire ce mois</div>
-                </div>
+                <div class="stat-value"><?php echo $stats['total_employes']; ?></div>
+                <div class="stat-label">Employés Total</div>
             </div>
             
-            <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
-                    <i class="fas fa-check-circle"></i>
+            <div class="stat-card fade-in" style="animation-delay: 0.1s;">
+                <div class="stat-icon">
+                    <i class="fas fa-file-invoice-dollar"></i>
                 </div>
-                <div class="stat-info">
-                    <h3><?php echo count(array_filter($salaires_mensuels, fn($s) => $s['statut_paiement'] === 'paye')); ?></h3>
-                    <p>Paiements effectués</p>
-                    <div class="stat-label">Mois en cours</div>
+                <div class="stat-value">
+                    <?php echo number_format($stats['total_salaire_brut'], 0, ',', ' '); ?> FCFA
                 </div>
+                <div class="stat-label">Masse Salariale</div>
+            </div>
+            
+            <div class="stat-card fade-in" style="animation-delay: 0.2s;">
+                <div class="stat-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-value">
+                    <?php echo number_format($stats['total_heures_travail'], 1, ',', ' '); ?> h
+                </div>
+                <div class="stat-label">Heures Total Travaillées</div>
+            </div>
+            
+            <div class="stat-card fade-in" style="animation-delay: 0.3s;">
+                <div class="stat-icon">
+                    <i class="fas fa-briefcase"></i>
+                </div>
+                <div class="stat-value"><?php echo $stats['postes_configures']; ?>/<?php echo count($allPostes); ?></div>
+                <div class="stat-label">Postes Configurés</div>
             </div>
         </div>
-        
-        <!-- Section principale avec onglets -->
-        <div class="tabs-container">
-            <div class="tabs-header">
-                <button class="tab-btn active" onclick="switchTab('tab-salaires')">
-                    <i class="fas fa-calculator"></i> Salaires Mensuels
-                </button>
-                <button class="tab-btn" onclick="switchTab('tab-postes')">
-                    <i class="fas fa-briefcase"></i> Salaires par Poste
-                </button>
-                <button class="tab-btn" onclick="switchTab('tab-paiements')">
-                    <i class="fas fa-history"></i> Historique Paiements
-                </button>
-                <button class="tab-btn" onclick="switchTab('tab-analytique')">
-                    <i class="fas fa-chart-bar"></i> Analyse
-                </button>
-            </div>
-            
-            <!-- Onglet 1: Salaires Mensuels -->
-            <div id="tab-salaires" class="tab-content active">
-                <div class="section-header">
-                    <h2>Salaires pour <?php echo $mois_nom . ' ' . $annee_actuelle; ?></h2>
-                    <div class="section-actions">
-                        <div class="period-selector">
-                            <select id="select-mois" class="form-control" onchange="changerMoisSalaire()">
-                                <?php for ($i = 1; $i <= 12; $i++): ?>
-                                    <option value="<?php echo $i; ?>" <?php echo $i == $mois_actuel ? 'selected' : ''; ?>>
-                                        <?php echo date('F', mktime(0, 0, 0, $i, 1)); ?>
-                                    </option>
-                                <?php endfor; ?>
-                            </select>
-                            <select id="select-annee" class="form-control" onchange="changerMoisSalaire()">
-                                <?php for ($i = date('Y') - 2; $i <= date('Y') + 1; $i++): ?>
-                                    <option value="<?php echo $i; ?>" <?php echo $i == $annee_actuelle ? 'selected' : ''; ?>>
-                                        <?php echo $i; ?>
-                                    </option>
-                                <?php endfor; ?>
-                            </select>
-                        </div>
-                    </div>
+
+        <!-- Content Grid -->
+        <div class="content-grid" style="margin-top: 30px;">
+            <!-- Formulaire de configuration de salaire -->
+            <div class="card fade-in">
+                <div class="card-header">
+                    <h2><i class="fas fa-cogs"></i> Configuration de Salaire par Poste</h2>
                 </div>
                 
-                <div class="table-container">
-                    <table id="table-salaires">
-                        <thead>
-                            <tr>
-                                <th>Employé</th>
-                                <th>Poste</th>
-                                <th>Salaire/h</th>
-                                <th>Heures</th>
-                                <th>Jours</th>
-                                <th>Salaire Brut</th>
-                                <th>Montant Payé</th>
-                                <th>Reste</th>
-                                <th>Statut</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php $total_salaire = 0; $total_paye = 0; ?>
-                            <?php foreach ($salaires_mensuels as $salaire): ?>
-                                <?php 
-                                    $total_salaire += $salaire['salaire_calcul'];
-                                    $total_paye += $salaire['montant_paye'];
-                                ?>
-                                <tr>
-                                    <td>
-                                        <div class="user-info">
-                                            <div class="avatar-small" style="background: <?php echo getRandomColor($salaire['user_id']); ?>">
-                                                <?php echo getInitials($salaire['nom']); ?>
-                                            </div>
-                                            <div>
-                                                <div class="user-name"><?php echo htmlspecialchars($salaire['nom']); ?></div>
-                                                <div class="user-email"><?php echo htmlspecialchars($salaire['email']); ?></div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($salaire['poste_nom']); ?></td>
-                                    <td class="text-right"><?php echo number_format($salaire['salaire_heure'], 2, ',', ' '); ?> FCFA</td>
-                                    <td class="text-center"><?php echo number_format($salaire['heures_travaillees'], 1, ',', ' '); ?>h</td>
-                                    <td class="text-center"><?php echo $salaire['jours_presents']; ?>j</td>
-                                    <td class="text-right">
-                                        <span class="amount"><?php echo number_format($salaire['salaire_calcul'], 2, ',', ' '); ?> FCFA</span>
-                                    </td>
-                                    <td class="text-right">
-                                        <?php if ($salaire['montant_paye'] > 0): ?>
-                                            <span class="amount paid"><?php echo number_format($salaire['montant_paye'], 2, ',', ' '); ?> FCFA</span>
-                                        <?php else: ?>
-                                            <span class="amount">0,00 FCFA</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="text-right">
-                                        <?php if ($salaire['reste_a_payer'] > 0): ?>
-                                            <span class="amount unpaid"><?php echo number_format($salaire['reste_a_payer'], 2, ',', ' '); ?> FCFA</span>
-                                        <?php else: ?>
-                                            <span class="amount">0,00 FCFA</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php
-                                            $statut_classes = [
-                                                'paye' => 'badge-success',
-                                                'partiel' => 'badge-warning',
-                                                'non_paye' => 'badge-error',
-                                                'retarde' => 'badge-secondary'
-                                            ];
-                                            $statut_text = [
-                                                'paye' => 'Payé',
-                                                'partiel' => 'Partiel',
-                                                'non_paye' => 'Non payé',
-                                                'retarde' => 'Retardé'
-                                            ];
-                                        ?>
-                                        <span class="badge <?php echo $statut_classes[$salaire['statut_paiement']]; ?>">
-                                            <?php echo $statut_text[$salaire['statut_paiement']]; ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="action-buttons">
-                                            <button class="btn-icon" title="Payer" onclick="payerSalaire(<?php echo $salaire['user_id']; ?>, '<?php echo $salaire['nom']; ?>', <?php echo $salaire['salaire_calcul']; ?>)">
-                                                <i class="fas fa-credit-card"></i>
-                                            </button>
-                                            <button class="btn-icon" title="Détails" onclick="voirDetails(<?php echo $salaire['user_id']; ?>)">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                            <button class="btn-icon" title="Bulletin" onclick="genererBulletin(<?php echo $salaire['user_id']; ?>)">
-                                                <i class="fas fa-file-invoice"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
+                <form method="POST" id="salaireForm">
+                    <input type="hidden" name="action" value="configurer_poste">
+                    
+                    <div class="form-group">
+                        <label for="poste_id">Poste *</label>
+                        <select id="poste_id" name="poste_id" class="form-control" required>
+                            <option value="">Sélectionnez un poste...</option>
+                            <?php foreach ($allPostes as $poste): ?>
+                                <option value="<?php echo $poste['id']; ?>" 
+                                    <?php echo isset($_POST['poste_id']) && $_POST['poste_id'] == $poste['id'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($poste['nom']); ?>
+                                </option>
                             <?php endforeach; ?>
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="5" class="text-right"><strong>Totaux:</strong></td>
-                                <td class="text-right"><strong><?php echo number_format($total_salaire, 2, ',', ' '); ?> FCFA</strong></td>
-                                <td class="text-right"><strong><?php echo number_format($total_paye, 2, ',', ' '); ?> FCFA</strong></td>
-                                <td class="text-right"><strong><?php echo number_format($total_salaire - $total_paye, 2, ',', ' '); ?> FCFA</strong></td>
-                                <td colspan="2"></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-            
-            <!-- Onglet 2: Salaires par Poste -->
-            <div id="tab-postes" class="tab-content">
-                <div class="section-header">
-                    <h2>Configuration des Salaires par Poste</h2>
-                    <p>Définissez le salaire horaire pour chaque type de poste</p>
-                </div>
-                
-                <div class="grid-2">
-                    <div class="table-container">
-                        <div class="table-header">
-                            <h3>Liste des Postes</h3>
-                            <button class="btn btn-primary" onclick="ouvrirModalNouveauPoste()">
-                                <i class="fas fa-plus"></i> Nouveau Poste
-                            </button>
-                        </div>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Poste</th>
-                                    <th>Description</th>
-                                    <th>Salaire/h</th>
-                                    <th>Employés</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($postes as $poste): ?>
-                                    <tr>
-                                        <td><?php echo htmlspecialchars($poste['nom']); ?></td>
-                                        <td><?php echo htmlspecialchars($poste['description'] ?? 'Non spécifié'); ?></td>
-                                        <td>
-                                            <?php if ($poste['salaire_heure']): ?>
-                                                <span class="badge badge-success"><?php echo number_format($poste['salaire_heure'], 2, ',', ' '); ?> FCFA/h</span>
-                                            <?php else: ?>
-                                                <span class="badge badge-warning">Non défini</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <?php
-                                                $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM users WHERE poste_id = ? AND is_admin = 0");
-                                                $stmt->execute([$poste['id']]);
-                                                $total = $stmt->fetch()['total'];
-                                            ?>
-                                            <span class="badge badge-info"><?php echo $total; ?> employé(s)</span>
-                                        </td>
-                                        <td>
-                                            <div class="action-buttons">
-                                                <button class="btn-icon" title="Modifier salaire" onclick="modifierSalairePoste(<?php echo $poste['id']; ?>, '<?php echo htmlspecialchars($poste['nom']); ?>', <?php echo $poste['salaire_heure'] ?? 0; ?>)">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <button class="btn-icon" title="Voir employés" onclick="voirEmployesPoste(<?php echo $poste['id']; ?>)">
-                                                    <i class="fas fa-users"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
+                        </select>
+                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                            Sélectionnez le poste à configurer
+                        </small>
                     </div>
                     
-                    <div class="info-card">
-                        <h3><i class="fas fa-info-circle"></i> Instructions</h3>
-                        <p>Pour configurer le salaire horaire d'un poste :</p>
-                        <ol>
-                            <li>Sélectionnez le poste dans la liste</li>
-                            <li>Cliquez sur l'icône <i class="fas fa-edit"></i> pour modifier</li>
-                            <li>Entrez le salaire horaire en FCFA</li>
-                            <li>Cliquez sur "Mettre à jour"</li>
-                        </ol>
-                        <p><strong>Note :</strong> Le salaire défini sera appliqué automatiquement à tous les employés occupant ce poste.</p>
-                        
-                        <div class="example-calculation">
-                            <h4>Exemple de calcul :</h4>
-                            <p>Salaire/h : 15,00 FCFA<br>
-                               Heures travaillées : 160h<br>
-                               <strong>Salaire brut : 2 400,00 FCFA</strong></p>
+                    <div class="form-group">
+                        <label for="salaire_brut_mensuel">Salaire Brut Mensuel (FCFA) *</label>
+                        <input type="number" id="salaire_brut_mensuel" name="salaire_brut_mensuel" 
+                               class="form-control" required min="0" step="1000"
+                               placeholder="Ex: 500000"
+                               value="<?php echo $_POST['salaire_brut_mensuel'] ?? ''; ?>">
+                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                            Salaire brut mensuel pour ce poste
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="jours_travail_mois">Jours de Travail par Mois *</label>
+                        <input type="number" id="jours_travail_mois" name="jours_travail_mois" 
+                               class="form-control" required min="1" max="31" step="1"
+                               placeholder="Ex: 22"
+                               value="<?php echo $_POST['jours_travail_mois'] ?? '22'; ?>">
+                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                            Nombre de jours travaillés par mois (généralement 22)
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="heures_travail_jour">Heures de Travail par Jour *</label>
+                        <input type="number" id="heures_travail_jour" name="heures_travail_jour" 
+                               class="form-control" required min="1" max="24" step="0.5"
+                               placeholder="Ex: 8"
+                               value="<?php echo $_POST['heures_travail_jour'] ?? '8.0'; ?>">
+                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                            Nombre d'heures travaillées par jour (ex: 8.0)
+                        </small>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Enregistrer la Configuration
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="calculateHourlyRate()">
+                            <i class="fas fa-calculator"></i> Calculer Taux Horaire
+                        </button>
+                    </div>
+                    
+                    <!-- Résultat du calcul -->
+                    <div id="hourlyRateResult" style="margin-top: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; display: none;">
+                        <h4 style="margin: 0 0 10px 0; color: var(--text-primary);">
+                            <i class="fas fa-chart-line"></i> Calcul du Taux Horaire
+                        </h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div>
+                                <span style="font-size: 12px; color: var(--text-secondary);">Taux Horaire:</span>
+                                <div style="font-size: 18px; font-weight: 600; color: var(--primary);" id="calculatedHourlyRate">0 FCFA/h</div>
+                            </div>
+                            <div>
+                                <span style="font-size: 12px; color: var(--text-secondary);">Heures Mensuelles:</span>
+                                <div style="font-size: 18px; font-weight: 600; color: var(--success);" id="totalMonthlyHours">0 h</div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </form>
             </div>
-            
-            <!-- Onglet 3: Historique des Paiements -->
-            <div id="tab-paiements" class="tab-content">
-                <div class="section-header">
-                    <h2>Historique des Paiements</h2>
-                    <div class="section-actions">
-                        <input type="text" class="form-control" placeholder="Rechercher..." id="search-paiements">
-                    </div>
+
+            <!-- Liste des configurations de salaire -->
+            <div class="card fade-in" style="animation-delay: 0.2s;">
+                <div class="card-header">
+                    <h2><i class="fas fa-list-check"></i> Configurations Enregistrées</h2>
                 </div>
                 
-                <div class="table-container">
-                    <?php if (count($historique_paiements) > 0): ?>
-                        <table id="table-paiements">
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <?php if (!empty($salaireConfigs)): ?>
+                        <table style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Employé</th>
-                                    <th>Période</th>
-                                    <th>Montant</th>
-                                    <th>Statut</th>
-                                    <th>Méthode</th>
-                                    <th>Référence</th>
-                                    <th>Actions</th>
+                                    <th style="text-align: left; padding: 10px; border-bottom: 1px solid var(--border-color);">Poste</th>
+                                    <th style="text-align: right; padding: 10px; border-bottom: 1px solid var(--border-color);">Taux Horaire</th>
+                                    <th style="text-align: center; padding: 10px; border-bottom: 1px solid var(--border-color);">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($historique_paiements as $paiement): ?>
-                                    <tr>
-                                        <td><?php echo date('d/m/Y H:i', strtotime($paiement['date_paiement'])); ?></td>
-                                        <td><?php echo htmlspecialchars($paiement['nom']); ?></td>
-                                        <td><?php echo $paiement['mois_nom'] . ' ' . $paiement['annee']; ?></td>
-                                        <td class="text-right"><?php echo number_format($paiement['montant'], 2, ',', ' '); ?> FCFA</td>
-                                        <td>
-                                            <?php $statut_text = ['paye' => 'Payé', 'partiel' => 'Partiel', 'non_paye' => 'Non payé', 'retarde' => 'Retardé']; ?>
-                                            <span class="badge badge-<?php echo $paiement['statut'] === 'paye' ? 'success' : ($paiement['statut'] === 'partiel' ? 'warning' : 'error'); ?>">
-                                                <?php echo $statut_text[$paiement['statut']]; ?>
-                                            </span>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($paiement['methode_paiement'] ?? 'Virement'); ?></td>
-                                        <td><?php echo htmlspecialchars($paiement['reference_paiement'] ?? '-'); ?></td>
-                                        <td>
-                                            <div class="action-buttons">
-                                                <button class="btn-icon" title="Voir reçu" onclick="voirRecu(<?php echo $paiement['id']; ?>)">
-                                                    <i class="fas fa-receipt"></i>
-                                                </button>
-                                                <button class="btn-icon" title="Exporter" onclick="exporterPaiement(<?php echo $paiement['id']; ?>)">
-                                                    <i class="fas fa-file-export"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                <?php foreach ($salaireConfigs as $config): ?>
+                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                    <td style="padding: 10px;">
+                                        <strong><?php echo htmlspecialchars($config['poste_nom']); ?></strong><br>
+                                        <small style="color: var(--text-secondary);">
+                                            <?php echo number_format($config['salaire_brut_mensuel'], 0, ',', ' '); ?> FCFA/mois
+                                        </small>
+                                    </td>
+                                    <td style="text-align: right; padding: 10px; font-weight: 600;" class="currency currency-positive">
+                                        <?php echo number_format($config['salaire_horaire'], 0, ',', ' '); ?> FCFA/h
+                                    </td>
+                                    <td style="text-align: center; padding: 10px;">
+                                        <button class="btn btn-secondary btn-sm" 
+                                                onclick="loadConfig(<?php echo $config['poste_id']; ?>)"
+                                                title="Charger cette configuration">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                    </td>
+                                </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
                     <?php else: ?>
-                        <div class="empty-state">
-                            <i class="fas fa-history fa-3x"></i>
-                            <h3>Aucun paiement enregistré</h3>
-                            <p>Les paiements effectués apparaîtront ici</p>
+                        <div class="empty-state" style="padding: 30px;">
+                            <i class="fas fa-cogs"></i>
+                            <h3>Aucune configuration</h3>
+                            <p>Utilisez le formulaire pour configurer les salaires par poste</p>
                         </div>
                     <?php endif; ?>
                 </div>
+                
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                    <h4 style="margin: 0 0 10px 0; color: var(--text-primary); font-size: 14px;">
+                        <i class="fas fa-lightbulb"></i> Information
+                    </h4>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+                        Le taux horaire est calculé automatiquement : <br>
+                        <strong>Salaire horaire = Salaire mensuel ÷ (Jours travail × Heures/jour)</strong>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tableau des salaires -->
+        <div class="table-container fade-in" style="animation-delay: 0.4s; margin-top: 30px;">
+            <div class="table-header">
+                <h2><i class="fas fa-table"></i> Tableau des Salaires - <?php echo date('F Y', strtotime($currentMonth)); ?></h2>
+                <div class="table-actions">
+                    <input type="text" class="form-control table-search" placeholder="Rechercher un employé..." id="tableSearch">
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-secondary" onclick="clearSearch()">
+                            <i class="fas fa-times"></i> Effacer
+                        </button>
+                        <button class="btn btn-success" onclick="exportToExcel()">
+                            <i class="fas fa-file-excel"></i> Exporter Excel
+                        </button>
+                        <button class="btn btn-primary" onclick="window.print()">
+                            <i class="fas fa-print"></i> Imprimer
+                        </button>
+                    </div>
+                </div>
             </div>
             
-            <!-- Onglet 4: Analyse -->
-            <div id="tab-analytique" class="tab-content">
-                <div class="section-header">
-                    <h2>Analyse des Salaires</h2>
-                    <div class="section-actions">
-                        <select id="select-periode-analyse" class="form-control" onchange="changerPeriodeAnalyse()">
-                            <option value="mois">Ce mois</option>
-                            <option value="trimestre">Ce trimestre</option>
-                            <option value="semestre">Ce semestre</option>
-                            <option value="annee">Cette année</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="grid-2">
-                    <div class="chart-container">
-                        <h3>Répartition par Poste</h3>
-                        <canvas id="chart-repartition-poste"></canvas>
-                    </div>
-                    
-                    <div class="chart-container">
-                        <h3>Évolution Mensuelle</h3>
-                        <canvas id="chart-evolution-mensuelle"></canvas>
-                    </div>
-                </div>
-                
-                <div class="table-container" style="margin-top: 30px;">
-                    <h3>Top 5 des Salaires</h3>
-                    <div class="ranking-list">
-                        <?php 
-                        $salaires_tries = $salaires_mensuels;
-                        usort($salaires_tries, fn($a, $b) => $b['salaire_calcul'] <=> $a['salaire_calcul']);
-                        $top_salaires = array_slice($salaires_tries, 0, 5);
+            <div style="overflow-x: auto;">
+                <table id="salaireTable">
+                    <thead>
+                        <tr>
+                            <th><i class="fas fa-user"></i> Employé</th>
+                            <th><i class="fas fa-briefcase"></i> Poste</th>
+                            <th><i class="fas fa-calendar-day"></i> Jours Présents</th>
+                            <th><i class="fas fa-clock"></i> Heures Travaillées</th>
+                            <th><i class="fas fa-hourglass-half"></i> Retard Total</th>
+                            <th><i class="fas fa-money-bill"></i> Taux Horaire</th>
+                            <th><i class="fas fa-calculator"></i> Salaire Brut</th>
+                            <th><i class="fas fa-percentage"></i> État</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($salaireData as $index => $data): 
+                            // Déterminer l'état
+                            $has_config = !empty($data['salaire_horaire']);
+                            $status_class = 'pending';
+                            $status_text = 'Non configuré';
+                            $status_icon = 'exclamation-circle';
+                            
+                            if ($has_config) {
+                                if ($data['heures_travail_mois'] > 0) {
+                                    $status_class = 'active';
+                                    $status_text = 'Calculé';
+                                    $status_icon = 'check-circle';
+                                } else {
+                                    $status_class = 'inactive';
+                                    $status_text = 'Absent';
+                                    $status_icon = 'times-circle';
+                                }
+                            }
                         ?>
-                        <?php foreach ($top_salaires as $index => $salaire): ?>
-                            <div class="ranking-item">
-                                <div class="rank-number"><?php echo $index + 1; ?></div>
-                                <div class="user-info">
-                                    <div class="avatar-small" style="background: <?php echo getRandomColor($salaire['user_id']); ?>">
-                                        <?php echo getInitials($salaire['nom']); ?>
-                                    </div>
-                                    <div class="user-details">
-                                        <div class="user-name"><?php echo htmlspecialchars($salaire['nom']); ?></div>
-                                        <div class="user-poste"><?php echo htmlspecialchars($salaire['poste_nom']); ?></div>
-                                    </div>
+                        <tr class="fade-in" style="animation-delay: <?php echo ($index * 0.05) + 0.5; ?>s;">
+                            <td>
+                                <strong class="employee-name"><?php echo htmlspecialchars($data['user_nom']); ?></strong><br>
+                                <small style="color: var(--text-secondary); font-size: 12px;">
+                                    <?php echo htmlspecialchars($data['email']); ?>
+                                </small>
+                            </td>
+                            <td>
+                                <span class="badge badge-primary">
+                                    <i class="fas fa-briefcase"></i>
+                                    <?php echo htmlspecialchars($data['poste_nom']); ?>
+                                </span>
+                            </td>
+                            <td>
+                                <div style="text-align: center; font-weight: 600;">
+                                    <?php echo $data['jours_presents']; ?> jours
                                 </div>
-                                <div class="ranking-stats">
-                                    <div class="stat-item">
-                                        <span class="stat-value"><?php echo number_format($salaire['heures_travaillees'], 1, ',', ' '); ?>h</span>
-                                        <span class="stat-label">Heures</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-value"><?php echo number_format($salaire['salaire_calcul'], 0, ',', ' '); ?> FCFA</span>
-                                        <span class="stat-label">Salaire</span>
-                                    </div>
+                            </td>
+                            <td>
+                                <div class="currency">
+                                    <?php echo number_format($data['heures_travail_mois'], 2, ',', ' '); ?> h
                                 </div>
-                            </div>
+                            </td>
+                            <td>
+                                <?php if ($data['retard_total_minutes'] > 0): ?>
+                                    <span class="badge badge-warning">
+                                        <i class="fas fa-clock"></i>
+                                        <?php echo floor($data['retard_total_minutes'] / 60); ?>h<?php echo $data['retard_total_minutes'] % 60; ?>min
+                                    </span>
+                                <?php else: ?>
+                                    <span class="badge badge-success">À l'heure</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($has_config): ?>
+                                    <div class="currency currency-positive">
+                                        <?php echo number_format($data['salaire_horaire'], 0, ',', ' '); ?> FCFA/h
+                                    </div>
+                                <?php else: ?>
+                                    <span class="badge badge-danger">
+                                        <i class="fas fa-exclamation-triangle"></i> Non configuré
+                                    </span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($has_config && $data['salaire_brut'] > 0): ?>
+                                    <div class="currency" style="font-size: 16px; font-weight: 700; color: var(--success);">
+                                        <?php echo number_format($data['salaire_brut'], 0, ',', ' '); ?> FCFA
+                                    </div>
+                                <?php elseif ($has_config): ?>
+                                    <span class="badge badge-warning">0 FCFA</span>
+                                <?php else: ?>
+                                    <span class="text-muted">-</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <div class="status-indicator">
+                                    <span class="status-dot <?php echo $status_class; ?>"></span>
+                                    <span><?php echo $status_text; ?></span>
+                                    <i class="fas fa-<?php echo $status_icon; ?>" style="margin-left: 4px;"></i>
+                                </div>
+                            </td>
+                        </tr>
                         <?php endforeach; ?>
-                    </div>
+                        
+                        <?php if (empty($salaireData)): ?>
+                        <tr>
+                            <td colspan="8" class="empty-state">
+                                <i class="fas fa-user-slash"></i>
+                                <h3>Aucun employé trouvé</h3>
+                                <p>Les données salariales apparaîtront ici une fois configurées</p>
+                            </td>
+                        </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+            
+            <?php if (!empty($salaireData)): ?>
+            <div class="table-footer">
+                <div>
+                    <i class="fas fa-info-circle"></i> 
+                    <?php echo count($salaireData); ?> employé(s) - 
+                    Total heures : <strong><?php echo number_format($stats['total_heures_travail'], 1, ',', ' '); ?> h</strong>
+                    - Total salarial : <strong><?php echo number_format($stats['total_salaire_brut'], 0, ',', ' '); ?> FCFA</strong>
+                </div>
+                <div>
+                    <span style="color: var(--text-secondary); font-size: 12px;">
+                        <i class="fas fa-lightbulb"></i> 
+                        Données pour <?php echo date('F Y', strtotime($currentMonth)); ?>
+                    </span>
                 </div>
             </div>
-        </div>
-        
-        <!-- Modal pour paiement -->
-        <div id="modal-paiement" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>Enregistrer un Paiement</h2>
-                    <button class="close-modal" onclick="fermerModal('modal-paiement')">&times;</button>
-                </div>
-                <form method="POST" id="form-paiement">
-                    <input type="hidden" name="user_id" id="paiement_user_id">
-                    <input type="hidden" name="mois" value="<?php echo $mois_actuel; ?>">
-                    <input type="hidden" name="annee" value="<?php echo $annee_actuelle; ?>">
-                    
-                    <div class="modal-body">
-                        <div class="form-group">
-                            <label>Employé</label>
-                            <input type="text" id="paiement_employe_nom" class="form-control" readonly>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Salaire à payer</label>
-                            <input type="text" id="paiement_salaire_du" class="form-control" readonly>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Montant à payer (FCFA)</label>
-                            <input type="number" name="montant" id="paiement_montant" class="form-control" step="0.01" min="0" required>
-                            <small class="form-text">Montant effectivement versé</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Statut du paiement</label>
-                            <select name="statut" id="paiement_statut" class="form-control" required>
-                                <option value="paye">Payé</option>
-                                <option value="partiel">Partiellement payé</option>
-                                <option value="retarde">Retardé</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Méthode de paiement</label>
-                            <select name="methode_paiement" class="form-control">
-                                <option value="virement">Virement bancaire</option>
-                                <option value="cheque">Chèque</option>
-                                <option value="especes">Espèces</option>
-                                <option value="mobile">Mobile money</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Référence de paiement</label>
-                            <input type="text" name="reference_paiement" class="form-control" placeholder="Numéro de transaction ou référence">
-                        </div>
-                    </div>
-                    
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" onclick="fermerModal('modal-paiement')">Annuler</button>
-                        <button type="submit" name="paiement_mensuel" class="btn btn-primary">Enregistrer le paiement</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-        
-        <!-- Modal pour modifier salaire poste -->
-        <div id="modal-salaire-poste" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>Modifier le salaire horaire</h2>
-                    <button class="close-modal" onclick="fermerModal('modal-salaire-poste')">&times;</button>
-                </div>
-                <form method="POST">
-                    <input type="hidden" name="poste_id" id="poste_id">
-                    
-                    <div class="modal-body">
-                        <div class="form-group">
-                            <label id="poste_nom_label">Poste</label>
-                            <input type="text" id="poste_nom_display" class="form-control" readonly>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Salaire horaire (FCFA)</label>
-                            <input type="number" name="salaire_heure" id="poste_salaire_heure" class="form-control" step="0.01" min="0" required>
-                            <small class="form-text">Montant en FCFA par heure travaillée</small>
-                        </div>
-                    </div>
-                    
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" onclick="fermerModal('modal-salaire-poste')">Annuler</button>
-                        <button type="submit" name="update_salaire" class="btn btn-primary">Mettre à jour</button>
-                    </div>
-                </form>
-            </div>
+            <?php endif; ?>
         </div>
     </main>
-    
-    <script src="js/script.js"></script>
+
     <script>
-    // Gestion de la session sécurisée
-    let sessionStartTime = <?php echo isset($_SESSION['salaire_access_time']) ? $_SESSION['salaire_access_time'] : time(); ?>;
-    const sessionDuration = 1800; // 30 minutes en secondes
-    
-    // Initialisation
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialiser les graphiques
-        initialiserGraphiquesSalaires();
-        
-        // Démarrer le timer de session
-        startSessionTimer();
-        
-        // Recherche dans l'historique
-        document.getElementById('search-paiements')?.addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
-            const rows = document.querySelectorAll('#table-paiements tbody tr');
+        document.addEventListener('DOMContentLoaded', function() {
+            // Recherche dans le tableau
+            const tableSearch = document.getElementById('tableSearch');
+            const tableRows = document.querySelectorAll('#salaireTable tbody tr');
             
-            rows.forEach(row => {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(searchTerm) ? '' : 'none';
-            });
-        });
-        
-        // Vérifier l'inactivité
-        setupInactivityCheck();
-        
-        // Ouvrir la modale si erreur dans formulaire
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('payer')) {
-            const userId = urlParams.get('user_id');
-            const salaire = urlParams.get('salaire');
-            if (userId && salaire) {
-                payerSalaire(userId, '', parseFloat(salaire));
-            }
-        }
-    });
-    
-    // Timer de session
-    function startSessionTimer() {
-        function updateTimer() {
-            const now = Math.floor(Date.now() / 1000);
-            const elapsed = now - sessionStartTime;
-            const remaining = sessionDuration - elapsed;
-            
-            if (remaining <= 0) {
-                // Session expirée
-                reverifierSecurite();
-                return;
+            if (tableSearch) {
+                tableSearch.addEventListener('input', function(e) {
+                    const searchTerm = e.target.value.toLowerCase();
+                    let visibleCount = 0;
+                    
+                    tableRows.forEach(row => {
+                        const text = row.textContent.toLowerCase();
+                        if (text.includes(searchTerm)) {
+                            row.style.display = '';
+                            visibleCount++;
+                        } else {
+                            row.style.display = 'none';
+                        }
+                    });
+                    
+                    // Mettre à jour le compteur
+                    updateVisibleCount(visibleCount);
+                });
             }
             
-            const minutes = Math.floor(remaining / 60);
-            const seconds = remaining % 60;
-            
-            const timerElement = document.getElementById('sessionTimer');
-            if (timerElement) {
-                timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                
-                // Changer la couleur quand il reste peu de temps
-                if (remaining < 300) { // 5 minutes
-                    timerElement.style.color = 'var(--danger)';
-                    timerElement.style.fontWeight = 'bold';
-                } else if (remaining < 600) { // 10 minutes
-                    timerElement.style.color = 'var(--warning)';
+            // Animation des lignes du tableau
+            tableRows.forEach((row, index) => {
+                if (row.style.display !== 'none') {
+                    row.style.animationDelay = (index * 0.05) + 's';
                 }
+            });
+            
+            // Calculer le taux horaire si des valeurs sont présentes
+            const salaire = document.getElementById('salaire_brut_mensuel');
+            const jours = document.getElementById('jours_travail_mois');
+            const heures = document.getElementById('heures_travail_jour');
+            
+            [salaire, jours, heures].forEach(input => {
+                input.addEventListener('input', calculateHourlyRate);
+            });
+            
+            // Initialiser le calcul si des valeurs existent
+            if (salaire.value || jours.value || heures.value) {
+                calculateHourlyRate();
+            }
+            
+            // Mettre à jour le compteur initial
+            updateVisibleCount(tableRows.length);
+            
+            // Afficher une notification si message
+            <?php if ($message): ?>
+                showNotification('<?php echo $message_type === 'success' ? 'Succès' : 'Erreur'; ?>', 
+                               '<?php echo addslashes($message); ?>', 
+                               '<?php echo $message_type; ?>');
+            <?php endif; ?>
+        });
+        
+        // Calculer le taux horaire
+        function calculateHourlyRate() {
+            const salaire = parseFloat(document.getElementById('salaire_brut_mensuel').value) || 0;
+            const jours = parseInt(document.getElementById('jours_travail_mois').value) || 0;
+            const heures = parseFloat(document.getElementById('heures_travail_jour').value) || 0;
+            
+            if (salaire > 0 && jours > 0 && heures > 0) {
+                const totalHours = jours * heures;
+                const hourlyRate = salaire / totalHours;
+                
+                document.getElementById('calculatedHourlyRate').textContent = 
+                    formatCurrency(hourlyRate) + ' FCFA/h';
+                document.getElementById('totalMonthlyHours').textContent = 
+                    formatNumber(totalHours) + ' h';
+                
+                document.getElementById('hourlyRateResult').style.display = 'block';
+            } else {
+                document.getElementById('hourlyRateResult').style.display = 'none';
             }
         }
         
-        updateTimer();
-        setInterval(updateTimer, 1000);
-    }
-    
-    // Vérification d'inactivité
-    function setupInactivityCheck() {
-        let inactivityTimer;
-        const resetTimer = () => {
-            clearTimeout(inactivityTimer);
-            inactivityTimer = setTimeout(() => {
-                reverifierSecurite();
-            }, 300000); // 5 minutes d'inactivité
-        };
-        
-        // Événements qui réinitialisent le timer d'inactivité
-        ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(event => {
-            document.addEventListener(event, resetTimer, { passive: true });
-        });
-        
-        resetTimer();
-    }
-    
-    // Fonction pour reverrouiller la page
-    function reverifierSecurite() {
-        if (confirm('Voulez-vous verrouiller l\'accès aux salaires ? Vous devrez réentrer le code de sécurité.')) {
-            fetch('salaire_logout.php')
+        // Charger une configuration existante
+        function loadConfig(posteId) {
+            fetch('ajax/get_salaire_config.php?poste_id=' + posteId)
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        window.location.href = 'salaire.php';
+                        document.getElementById('poste_id').value = data.config.poste_id;
+                        document.getElementById('salaire_brut_mensuel').value = data.config.salaire_brut_mensuel;
+                        document.getElementById('jours_travail_mois').value = data.config.jours_travail_mois;
+                        document.getElementById('heures_travail_jour').value = data.config.heures_travail_jour;
+                        
+                        calculateHourlyRate();
+                        
+                        showNotification('Configuration chargée', 
+                                       'Configuration du poste "' + data.config.poste_nom + '" chargée', 
+                                       'success');
+                        
+                        // Scroll vers le formulaire
+                        document.getElementById('salaireForm').scrollIntoView({ behavior: 'smooth' });
+                    } else {
+                        showNotification('Erreur', 'Impossible de charger la configuration', 'error');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    window.location.href = 'salaire.php';
+                    showNotification('Erreur', 'Une erreur est survenue', 'error');
                 });
         }
-    }
-    
-    // Gestion des onglets
-    function switchTab(tabId) {
-        // Masquer tous les onglets
-        document.querySelectorAll('.tab-content').forEach(tab => {
-            tab.classList.remove('active');
-        });
         
-        // Désactiver tous les boutons d'onglets
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
+        // Fonction pour effacer la recherche
+        function clearSearch() {
+            const tableSearch = document.getElementById('tableSearch');
+            if (tableSearch) {
+                tableSearch.value = '';
+                const tableRows = document.querySelectorAll('#salaireTable tbody tr');
+                tableRows.forEach(row => {
+                    row.style.display = '';
+                });
+                updateVisibleCount(tableRows.length);
+                showNotification('Recherche effacée', 'Tous les filtres de recherche ont été réinitialisés.', 'info');
+            }
+        }
         
-        // Activer l'onglet sélectionné
-        document.getElementById(tabId).classList.add('active');
-        event.target.classList.add('active');
-    }
-    
-    // Fonction pour payer un salaire
-    function payerSalaire(userId, employeNom, salaireDu) {
-        document.getElementById('paiement_user_id').value = userId;
-        document.getElementById('paiement_employe_nom').value = employeNom || 'Employé #' + userId;
-        document.getElementById('paiement_salaire_du').value = salaireDu.toFixed(2) + ' FCFA';
-        document.getElementById('paiement_montant').value = salaireDu.toFixed(2);
-        document.getElementById('paiement_montant').max = salaireDu;
-        
-        ouvrirModal('modal-paiement');
-    }
-    
-    // Fonction pour modifier le salaire d'un poste
-    function modifierSalairePoste(posteId, posteNom, salaireActuel) {
-        document.getElementById('poste_id').value = posteId;
-        document.getElementById('poste_nom_display').value = posteNom;
-        document.getElementById('poste_salaire_heure').value = salaireActuel || '';
-        
-        ouvrirModal('modal-salaire-poste');
-    }
-    
-    // Fonction pour voir les détails d'un employé
-    function voirDetails(userId) {
-        window.location.href = `profile_employe.php?id=${userId}&tab=salaires`;
-    }
-    
-    // Fonction pour générer un bulletin
-    function genererBulletin(userId) {
-        // Ici, vous intégrerez la génération de bulletin de paie
-        showAlert('Génération du bulletin de paie...', 'info');
-        // window.open(`generer_bulletin.php?id=${userId}`, '_blank');
-    }
-    
-    // Fonction pour générer tous les bulletins
-    function genererBulletins() {
-        showAlert('Préparation de la génération des bulletins...', 'info');
-        // Implémentez ici la logique pour générer tous les bulletins
-    }
-    
-    // Fonction pour exporter les salaires
-    function exporterSalaires() {
-        const mois = document.getElementById('select-mois').value;
-        const annee = document.getElementById('select-annee').value;
-        
-        // Exporter les données via AJAX ou redirection
-        window.location.href = `export_salaires.php?mois=${mois}&annee=${annee}`;
-    }
-    
-    // Fonction pour changer le mois affiché
-    function changerMoisSalaire() {
-        const mois = document.getElementById('select-mois').value;
-        const annee = document.getElementById('select-annee').value;
-        
-        window.location.href = `salaires.php?mois=${mois}&annee=${annee}`;
-    }
-    
-    // Fonction pour changer la période d'analyse
-    function changerPeriodeAnalyse() {
-        // Recharger les données d'analyse
-        const periode = document.getElementById('select-periode-analyse').value;
-        console.log('Changement de période d\'analyse:', periode);
-        // Implémentez ici la logique AJAX pour recharger les graphiques
-    }
-    
-    // Fonction pour initialiser les graphiques
-    function initialiserGraphiquesSalaires() {
-        // Graphique de répartition par poste
-        const ctx1 = document.getElementById('chart-repartition-poste').getContext('2d');
-        new Chart(ctx1, {
-            type: 'doughnut',
-            data: {
-                labels: ['Administrateur', 'Développeur', 'Designer', 'Commercial', 'RH'],
-                datasets: [{
-                    data: [4500, 12000, 8500, 6800, 5200],
-                    backgroundColor: [
-                        'rgba(67, 97, 238, 0.8)',
-                        'rgba(76, 201, 240, 0.8)',
-                        'rgba(247, 37, 133, 0.8)',
-                        'rgba(42, 157, 143, 0.8)',
-                        'rgba(233, 196, 106, 0.8)'
-                    ],
-                    borderColor: [
-                        'rgba(67, 97, 238, 1)',
-                        'rgba(76, 201, 240, 1)',
-                        'rgba(247, 37, 133, 1)',
-                        'rgba(42, 157, 143, 1)',
-                        'rgba(233, 196, 106, 1)'
-                    ],
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'right',
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                label += new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(context.raw);
-                                return label;
-                            }
-                        }
+        // Fonction pour mettre à jour le compteur de lignes visibles
+        function updateVisibleCount(count) {
+            const footer = document.querySelector('.table-footer');
+            if (footer) {
+                const countElement = footer.querySelector('div:first-child');
+                if (countElement) {
+                    const parts = countElement.innerHTML.split('-');
+                    if (parts.length > 1) {
+                        countElement.innerHTML = `<i class="fas fa-info-circle"></i> ${count} employé(s) - ${parts[1]}`;
                     }
                 }
             }
-        });
+        }
         
-        // Graphique d'évolution mensuelle
-        const ctx2 = document.getElementById('chart-evolution-mensuelle').getContext('2d');
-        new Chart(ctx2, {
-            type: 'line',
-            data: {
-                labels: ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'],
-                datasets: [{
-                    label: 'Masse salariale',
-                    data: [32000, 34000, 33500, 36000, 38000, 37500, 39000, 38500, 40000, 42000, 41000, 43000],
-                    borderColor: 'rgba(67, 97, 238, 1)',
-                    backgroundColor: 'rgba(67, 97, 238, 0.1)',
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.4,
-                    pointBackgroundColor: 'rgba(67, 97, 238, 1)',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    pointRadius: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(context.raw);
-                            }
-                        }
+        // Fonction pour changer de mois
+        function changeMonth(offset) {
+            const currentUrl = new URL(window.location.href);
+            const currentMonth = '<?php echo $currentMonth; ?>';
+            const newDate = new Date(currentMonth + '-01');
+            newDate.setMonth(newDate.getMonth() + offset);
+            
+            const newMonth = newDate.getFullYear() + '-' + 
+                           String(newDate.getMonth() + 1).padStart(2, '0');
+            
+            currentUrl.searchParams.set('month', newMonth);
+            window.location.href = currentUrl.toString();
+        }
+        
+        // Fonction pour exporter en Excel
+        function exportToExcel() {
+            showNotification('Export', 'Préparation de l\'export Excel...', 'info');
+            
+            const table = document.getElementById('salaireTable');
+            const rows = table.querySelectorAll('tr');
+            let csv = [];
+            
+            rows.forEach(row => {
+                const rowData = [];
+                const cells = row.querySelectorAll('th, td');
+                
+                cells.forEach(cell => {
+                    // Nettoyer le texte (supprimer les balises, etc.)
+                    let text = cell.innerText.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+                    // Ajouter des guillemets si nécessaire
+                    if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+                        text = '"' + text.replace(/"/g, '""') + '"';
                     }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)'
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0 }).format(value);
-                            }
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    }
-                }
+                    rowData.push(text);
+                });
+                
+                csv.push(rowData.join(','));
+            });
+            
+            const csvContent = csv.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            
+            link.href = URL.createObjectURL(blob);
+            link.download = 'salaires_<?php echo date('Y-m'); ?>.csv';
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showNotification('Export réussi', 'Le fichier Excel a été téléchargé', 'success');
+        }
+        
+        // Fonction pour afficher des notifications
+        function showNotification(title, message, type = 'info') {
+            // Supprimer les notifications existantes
+            document.querySelectorAll('.notification').forEach(n => n.remove());
+            
+            // Créer la notification
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: var(--bg-card);
+                color: var(--text-primary);
+                padding: 15px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                border-left: 4px solid;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 15px;
+                z-index: 1000;
+                max-width: 400px;
+                animation: slideInRight 0.3s ease;
+                border: 1px solid var(--border-color);
+                border-left-color: ${type === 'success' ? 'var(--success)' : 
+                                  type === 'error' ? 'var(--danger)' : 
+                                  type === 'warning' ? 'var(--warning)' : 'var(--info)'};
+            `;
+            
+            let icon = 'info-circle';
+            switch(type) {
+                case 'success': icon = 'check-circle'; break;
+                case 'error': icon = 'exclamation-circle'; break;
+                case 'warning': icon = 'exclamation-triangle'; break;
+                default: icon = 'info-circle';
             }
+            
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <i class="fas fa-${icon}"></i>
+                    <div>
+                        <strong>${title}</strong>
+                        <p style="margin: 4px 0 0 0; font-size: 13px;">${message}</p>
+                    </div>
+                </div>
+                <button class="notification-close" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Supprimer automatiquement après 5 secondes
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+        
+        // Fonctions utilitaires de formatage
+        function formatCurrency(amount) {
+            return amount.toLocaleString('fr-FR', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            });
+        }
+        
+        function formatNumber(number) {
+            return number.toLocaleString('fr-FR', {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1
+            });
+        }
+        
+        // Gestion de la soumission du formulaire
+        document.getElementById('salaireForm').addEventListener('submit', function(e) {
+            const salaire = document.getElementById('salaire_brut_mensuel').value;
+            const jours = document.getElementById('jours_travail_mois').value;
+            const heures = document.getElementById('heures_travail_jour').value;
+            
+            if (!salaire || !jours || !heures) {
+                e.preventDefault();
+                showNotification('Erreur', 'Veuillez remplir tous les champs obligatoires', 'error');
+                return false;
+            }
+            
+            if (parseFloat(salaire) <= 0 || parseInt(jours) <= 0 || parseFloat(heures) <= 0) {
+                e.preventDefault();
+                showNotification('Erreur', 'Les valeurs doivent être supérieures à 0', 'error');
+                return false;
+            }
+            
+            // Afficher un indicateur de chargement
+            const btn = this.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enregistrement...';
+            btn.disabled = true;
+            
+            // Réactiver après 3 secondes
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }, 3000);
+            
+            return true;
         });
-    }
-    
-    // Fonctions modales utilitaires
-    function ouvrirModal(modalId) {
-        document.getElementById(modalId).style.display = 'flex';
-    }
-    
-    function fermerModal(modalId) {
-        document.getElementById(modalId).style.display = 'none';
-    }
-    
-    // Fermer les modales en cliquant en dehors
-    window.onclick = function(event) {
-        if (event.target.classList.contains('modal')) {
-            event.target.style.display = 'none';
-        }
-    }
-    
-    // Fonction pour afficher des alertes
-    function showAlert(message, type) {
-        const alertClass = type === 'success' ? 'alert-success' : 
-                          type === 'error' ? 'alert-error' : 
-                          type === 'warning' ? 'alert-warning' : 'alert-info';
         
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert ${alertClass}`;
-        alertDiv.innerHTML = `
-            <i class="fas fa-${type === 'success' ? 'check-circle' : 
-                             type === 'error' ? 'exclamation-circle' : 
-                             type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
-            ${message}
-        `;
-        
-        const pageHeader = document.querySelector('.page-header');
-        if (pageHeader && pageHeader.nextElementSibling) {
-            pageHeader.parentNode.insertBefore(alertDiv, pageHeader.nextElementSibling);
-        } else {
-            document.querySelector('.main-content').prepend(alertDiv);
+        // Gestion du thème auto
+        function handleThemeChange() {
+            const theme = document.documentElement.getAttribute('data-theme');
+            if (theme === 'auto') {
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+            }
         }
         
-        // Supprimer l'alerte après 5 secondes
-        setTimeout(() => {
-            alertDiv.remove();
-        }, 5000);
-    }
+        // Écouter les changements de thème système
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', handleThemeChange);
+        handleThemeChange();
     </script>
-    
-    <!-- Créer un fichier salaire_logout.php pour gérer la déconnexion -->
-    <script>
-    // Sauvegarde du fichier salaire_logout.php
-    const salaireLogoutContent = `<?php
-    session_start();
-    
-    // Supprimer l'accès aux salaires
-    unset($_SESSION['salaire_access_granted']);
-    unset($_SESSION['salaire_access_time']);
-    
-    echo json_encode(['success' => true]);
-    ?>`;
-    
-    // Cette partie est pour information seulement
-    console.log('Pour compléter l\'installation, créez le fichier salaire_logout.php avec le contenu ci-dessus');
-    </script>
-    
-    <style>
-    /* Styles spécifiques pour la page salaires */
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 30px;
-        flex-wrap: wrap;
-        gap: 20px;
-    }
-    
-    .header-content h1 {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 5px;
-    }
-    
-    .header-actions {
-        display: flex;
-        gap: 10px;
-    }
-    
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        gap: 20px;
-        margin-bottom: 30px;
-    }
-    
-    .stat-card {
-        background: white;
-        border-radius: var(--border-radius);
-        padding: 20px;
-        box-shadow: var(--shadow);
-        display: flex;
-        align-items: center;
-        gap: 20px;
-        transition: var(--transition);
-    }
-    
-    .stat-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-    }
-    
-    .stat-icon {
-        width: 60px;
-        height: 60px;
-        border-radius: 15px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 24px;
-    }
-    
-    .stat-info {
-        flex: 1;
-    }
-    
-    .stat-info h3 {
-        margin: 0;
-        font-size: 28px;
-        color: var(--dark);
-    }
-    
-    .stat-info p {
-        margin: 5px 0;
-        color: var(--gray);
-        font-size: 14px;
-    }
-    
-    .stat-trend {
-        font-size: 12px;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        margin-top: 5px;
-    }
-    
-    .stat-trend.positive {
-        color: var(--success);
-    }
-    
-    .stat-trend.negative {
-        color: var(--danger);
-    }
-    
-    .stat-label {
-        font-size: 12px;
-        color: var(--gray);
-    }
-    
-    /* Tabs */
-    .tabs-container {
-        background: white;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow);
-        overflow: hidden;
-    }
-    
-    .tabs-header {
-        display: flex;
-        background: var(--gray-light);
-        border-bottom: 1px solid #e0e0e0;
-        overflow-x: auto;
-    }
-    
-    .tab-btn {
-        padding: 15px 25px;
-        background: none;
-        border: none;
-        border-bottom: 3px solid transparent;
-        font-weight: 500;
-        color: var(--dark);
-        cursor: pointer;
-        transition: var(--transition);
-        white-space: nowrap;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .tab-btn:hover {
-        background: rgba(255,255,255,0.5);
-    }
-    
-    .tab-btn.active {
-        background: white;
-        border-bottom-color: var(--primary);
-        color: var(--primary);
-    }
-    
-    .tab-content {
-        padding: 30px;
-        display: none;
-    }
-    
-    .tab-content.active {
-        display: block;
-    }
-    
-    .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-        gap: 15px;
-    }
-    
-    .period-selector {
-        display: flex;
-        gap: 10px;
-    }
-    
-    /* Tables */
-    .table-container {
-        background: white;
-        border-radius: var(--border-radius);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        overflow: hidden;
-    }
-    
-    table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    
-    table thead {
-        background: #f8f9fa;
-        border-bottom: 2px solid #e9ecef;
-    }
-    
-    table th {
-        padding: 15px;
-        text-align: left;
-        font-weight: 600;
-        color: var(--dark);
-        font-size: 13px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    
-    table td {
-        padding: 15px;
-        border-bottom: 1px solid #e9ecef;
-        vertical-align: middle;
-    }
-    
-    table tbody tr:hover {
-        background: #f8f9fa;
-    }
-    
-    table tfoot {
-        background: #f8f9fa;
-        font-weight: 600;
-    }
-    
-    .text-right { text-align: right; }
-    .text-center { text-align: center; }
-    
-    .user-info {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    
-    .avatar-small {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: bold;
-        font-size: 14px;
-        flex-shrink: 0;
-    }
-    
-    .user-name {
-        font-weight: 500;
-        margin-bottom: 2px;
-    }
-    
-    .user-email {
-        font-size: 12px;
-        color: var(--gray);
-    }
-    
-    .amount {
-        font-weight: 600;
-        font-family: 'Courier New', monospace;
-    }
-    
-    .amount.paid {
-        color: var(--success);
-    }
-    
-    .amount.unpaid {
-        color: var(--danger);
-    }
-    
-    /* Badges */
-    .badge {
-        display: inline-block;
-        padding: 5px 10px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
-    }
-    
-    .badge-success { background: #d4edda; color: #155724; }
-    .badge-warning { background: #fff3cd; color: #856404; }
-    .badge-error { background: #f8d7da; color: #721c24; }
-    .badge-info { background: #d1ecf1; color: #0c5460; }
-    .badge-secondary { background: #e2e3e5; color: #383d41; }
-    
-    /* Action buttons */
-    .action-buttons {
-        display: flex;
-        gap: 5px;
-    }
-    
-    .btn-icon {
-        width: 34px;
-        height: 34px;
-        border-radius: 8px;
-        border: none;
-        background: #f8f9fa;
-        color: var(--dark);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: var(--transition);
-    }
-    
-    .btn-icon:hover {
-        background: var(--primary);
-        color: white;
-        transform: translateY(-2px);
-    }
-    
-    /* Layout grid */
-    .grid-2 {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 30px;
-    }
-    
-    @media (max-width: 992px) {
-        .grid-2 {
-            grid-template-columns: 1fr;
-        }
-    }
-    
-    /* Info card */
-    .info-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 25px;
-        border-radius: var(--border-radius);
-    }
-    
-    .info-card h3 {
-        margin-top: 0;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    
-    .info-card ol {
-        padding-left: 20px;
-        margin: 15px 0;
-    }
-    
-    .info-card li {
-        margin-bottom: 5px;
-    }
-    
-    .example-calculation {
-        background: rgba(255,255,255,0.1);
-        padding: 15px;
-        border-radius: 8px;
-        margin-top: 20px;
-    }
-    
-    /* Empty state */
-    .empty-state {
-        text-align: center;
-        padding: 60px 20px;
-        color: var(--gray);
-    }
-    
-    .empty-state i {
-        font-size: 48px;
-        margin-bottom: 20px;
-        opacity: 0.5;
-    }
-    
-    .empty-state h3 {
-        margin-bottom: 10px;
-        color: var(--dark);
-    }
-    
-    /* Ranking list */
-    .ranking-list {
-        padding: 0;
-    }
-    
-    .ranking-item {
-        display: flex;
-        align-items: center;
-        padding: 15px;
-        border-bottom: 1px solid var(--gray-light);
-        transition: var(--transition);
-    }
-    
-    .ranking-item:hover {
-        background: #f8f9fa;
-    }
-    
-    .ranking-item:last-child {
-        border-bottom: none;
-    }
-    
-    .rank-number {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        background: var(--primary);
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        margin-right: 15px;
-        flex-shrink: 0;
-    }
-    
-    .ranking-item:nth-child(1) .rank-number {
-        background: gold;
-        color: #333;
-    }
-    
-    .ranking-item:nth-child(2) .rank-number {
-        background: silver;
-        color: #333;
-    }
-    
-    .ranking-item:nth-child(3) .rank-number {
-        background: #cd7f32;
-        color: white;
-    }
-    
-    .ranking-stats {
-        display: flex;
-        gap: 20px;
-        margin-left: auto;
-    }
-    
-    .stat-item {
-        text-align: center;
-        min-width: 80px;
-    }
-    
-    .stat-value {
-        display: block;
-        font-weight: bold;
-        font-size: 16px;
-        color: var(--dark);
-    }
-    
-    .stat-label {
-        display: block;
-        font-size: 11px;
-        color: var(--gray);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    
-    /* Chart containers */
-    .chart-container {
-        background: white;
-        padding: 20px;
-        border-radius: var(--border-radius);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    
-    .chart-container h3 {
-        margin-top: 0;
-        margin-bottom: 20px;
-        font-size: 18px;
-    }
-    
-    /* Modals */
-    .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-        z-index: 1000;
-        justify-content: center;
-        align-items: center;
-    }
-    
-    .modal-content {
-        background: white;
-        border-radius: var(--border-radius);
-        width: 90%;
-        max-width: 500px;
-        max-height: 90vh;
-        overflow-y: auto;
-        animation: modalFadeIn 0.3s;
-    }
-    
-    @keyframes modalFadeIn {
-        from { opacity: 0; transform: translateY(-50px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px;
-        border-bottom: 1px solid var(--gray-light);
-    }
-    
-    .modal-header h2 {
-        margin: 0;
-        font-size: 20px;
-    }
-    
-    .close-modal {
-        background: none;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        color: var(--gray);
-        padding: 0;
-        width: 30px;
-        height: 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-    }
-    
-    .close-modal:hover {
-        background: var(--gray-light);
-    }
-    
-    .modal-body {
-        padding: 20px;
-    }
-    
-    .modal-footer {
-        padding: 20px;
-        border-top: 1px solid var(--gray-light);
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-    }
-    
-    /* Form styles */
-    .form-group {
-        margin-bottom: 20px;
-    }
-    
-    .form-group label {
-        display: block;
-        margin-bottom: 8px;
-        font-weight: 500;
-        color: var(--dark);
-    }
-    
-    .form-control {
-        width: 100%;
-        padding: 12px;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        font-size: 14px;
-        transition: var(--transition);
-    }
-    
-    .form-control:focus {
-        outline: none;
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
-    }
-    
-    .form-text {
-        display: block;
-        margin-top: 5px;
-        font-size: 12px;
-        color: var(--gray);
-    }
-    
-    /* Responsive */
-    @media (max-width: 768px) {
-        .page-header {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        
-        .header-actions {
-            width: 100%;
-            justify-content: flex-start;
-        }
-        
-        .tabs-header {
-            flex-wrap: wrap;
-        }
-        
-        .tab-btn {
-            flex: 1;
-            min-width: 120px;
-            justify-content: center;
-        }
-        
-        .section-header {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        
-        .period-selector {
-            width: 100%;
-        }
-        
-        .ranking-stats {
-            flex-direction: column;
-            gap: 5px;
-        }
-        
-        .stat-item {
-            min-width: auto;
-            text-align: left;
-        }
-        
-        table {
-            display: block;
-            overflow-x: auto;
-        }
-    }
-    
-    @media print {
-        .sidebar, .header, .header-actions, .tabs-header, .action-buttons {
-            display: none !important;
-        }
-        
-        .main-content {
-            margin: 0;
-            padding: 0;
-        }
-        
-        table {
-            break-inside: avoid;
-        }
-    }
-    </style>
 </body>
 </html>
