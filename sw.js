@@ -18,7 +18,6 @@ const urlsToCache = [
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
 ];
 
-// Configuration des heures de rappel
 const RAPPELS = [
   { heure: '08:00', titre: '🕗 Début de présence', message: 'N\'oubliez pas de pointer votre arrivée !' },
   { heure: '12:00', titre: '🍽️ Début de pause', message: 'Cliquez pour pointer le début de votre pause' },
@@ -26,7 +25,6 @@ const RAPPELS = [
   { heure: '17:30', titre: '🏁 Fin de journée', message: 'Pointez votre départ pour la journée' }
 ];
 
-// Variables pour gérer les notifications
 let notificationsEnvoyees = {};
 let intervalCheck;
 
@@ -57,35 +55,29 @@ self.addEventListener('activate', function(event) {
         })
       );
     }).then(() => {
-      // Démarrer la vérification des rappels
       initialiserRappels();
     })
   );
   self.clients.claim();
 });
 
-// Fonction pour initialiser les rappels
 function initialiserRappels() {
   console.log('Initialisation des rappels de pointage...');
   
-  // Réinitialiser les notifications envoyées chaque jour
   const aujourdhui = new Date().toDateString();
   if (!notificationsEnvoyees[aujourdhui]) {
     notificationsEnvoyees = { [aujourdhui]: {} };
   }
   
-  // Vérifier toutes les minutes si une notification doit être envoyée
   if (intervalCheck) clearInterval(intervalCheck);
   
   intervalCheck = setInterval(() => {
     verifierRappels();
-  }, 60000); // Vérifier toutes les minutes
+  }, 60000); 
   
-  // Vérifier immédiatement au démarrage
   verifierRappels();
 }
 
-// Fonction pour vérifier et envoyer les rappels
 function verifierRappels() {
   const maintenant = new Date();
   const heureActuelle = maintenant.getHours().toString().padStart(2, '0') + ':' + 
@@ -95,13 +87,11 @@ function verifierRappels() {
   RAPPELS.forEach(rappel => {
     const cleNotification = aujourdhui + '-' + rappel.heure;
     
-    // Vérifier si l'heure actuelle correspond à un rappel
     if (heureActuelle === rappel.heure && 
         !notificationsEnvoyees[aujourdhui]?.[rappel.heure]) {
       
       console.log(`Envoi notification: ${rappel.titre} à ${rappel.heure}`);
       
-      // Envoyer la notification
       self.registration.showNotification(rappel.titre, {
         body: rappel.message,
         icon: 'https://ziris.global-logistique.com/icons/icon-192x192.png',
@@ -126,19 +116,16 @@ function verifierRappels() {
         }
       });
       
-      // Marquer comme envoyée
       if (!notificationsEnvoyees[aujourdhui]) {
         notificationsEnvoyees[aujourdhui] = {};
       }
       notificationsEnvoyees[aujourdhui][rappel.heure] = true;
       
-      // Nettoyer les anciennes entrées (plus de 7 jours)
       nettoyerAnciennesNotifications();
     }
   });
 }
 
-// Nettoyer les notifications anciennes
 function nettoyerAnciennesNotifications() {
   const aujourdhui = new Date();
   const septJours = 7 * 24 * 60 * 60 * 1000;
@@ -151,45 +138,37 @@ function nettoyerAnciennesNotifications() {
   });
 }
 
-// Gérer les clics sur les notifications
 self.addEventListener('notificationclick', function(event) {
   console.log('Notification cliquée:', event.notification.tag);
   event.notification.close();
   
   if (event.action === 'pointer') {
-    // Ouvrir la page de pointage
     event.waitUntil(
       clients.matchAll({type: 'window'}).then(windowClients => {
-        // Vérifier si une fenêtre est déjà ouverte
         for (let client of windowClients) {
           if (client.url.includes('pointage.php') && 'focus' in client) {
             return client.focus();
           }
         }
-        // Sinon ouvrir une nouvelle fenêtre
         if (clients.openWindow) {
           return clients.openWindow('https://ziris.global-logistique.com/employee/pointage.php');
         }
       })
     );
   } else if (event.action === 'ignorer') {
-    // Rien à faire, juste fermer
     console.log('Notification ignorée');
   } else {
-    // Clic sur le corps de la notification
     event.waitUntil(
       clients.openWindow('https://ziris.global-logistique.com/employee/dashboard.php')
     );
   }
 });
 
-// Gérer la fermeture des notifications
 self.addEventListener('notificationclose', function(event) {
   console.log('Notification fermée:', event.notification.tag);
 });
 
 self.addEventListener('fetch', function(event) {
-  // Ignorer les requêtes non-GET et les requêtes chrome-extension
   if (event.request.method !== 'GET' || event.request.url.startsWith('chrome-extension://')) {
     return;
   }
@@ -197,15 +176,12 @@ self.addEventListener('fetch', function(event) {
   event.respondWith(
     caches.match(event.request)
       .then(function(response) {
-        // Retourner la réponse en cache si disponible
         if (response) {
           return response;
         }
 
-        // Sinon, faire la requête réseau
         return fetch(event.request)
           .then(function(networkResponse) {
-            // Mettre en cache la nouvelle ressource
             if (networkResponse && networkResponse.status === 200) {
               const responseToCache = networkResponse.clone();
               caches.open(CACHE_NAME)
@@ -248,13 +224,11 @@ self.addEventListener('fetch', function(event) {
   );
 });
 
-// Gérer les messages depuis la page
 self.addEventListener('message', function(event) {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
-  // Message pour demander l'envoi d'une notification de test
+
   if (event.data && event.data.type === 'TEST_NOTIFICATION') {
     self.registration.showNotification('Test Ziris', {
       body: 'Ceci est une notification de test',
@@ -262,7 +236,6 @@ self.addEventListener('message', function(event) {
     });
   }
   
-  // Message pour activer/désactiver les rappels
   if (event.data && event.data.type === 'TOGGLE_REMINDERS') {
     if (event.data.enabled) {
       initialiserRappels();
