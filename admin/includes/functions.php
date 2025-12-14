@@ -475,6 +475,10 @@ function getEmployesPonctuels($limit = 5) {
 // =============================================================================
 
 
+
+
+
+
 function getSystemSettings() {
     global $pdo;
     $stmt = $pdo->query("SELECT * FROM parametres_systeme WHERE id = 1");
@@ -497,6 +501,67 @@ function updateSystemSettings($heure_debut, $heure_fin, $debut_pause = null, $fi
         return false;
     }
 }
+
+
+
+function getFichesPaieHistory($limit = 20) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("
+            SELECT f.*, u.nom as employe_nom, u2.nom as generated_by_name
+            FROM fiches_paie_history f
+            JOIN users u ON f.user_id = u.id
+            JOIN users u2 ON f.generated_by = u2.id
+            ORDER BY f.created_at DESC
+            LIMIT :limit
+        ");
+        $stmt->bindValue(':limit', (int)$limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    } catch(PDOException $e) {
+        error_log("Erreur getFichesPaieHistory: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Récupérer les informations de l'entreprise
+ */
+function getEntrepriseInfo() {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->query("SELECT * FROM entreprise_infos LIMIT 1");
+        return $stmt->fetch();
+    } catch(PDOException $e) {
+        error_log("Erreur getEntrepriseInfo: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Générer une fiche de paie au format HTML
+ */
+function generateFichePaieHTML($user_id, $month) {
+    global $pdo;
+    
+    try {
+        // Récupérer les données de l'utilisateur et des présences
+        // (code similaire à celui de fiche.php)
+        
+        // Retourner le HTML généré
+        return $html;
+    } catch(PDOException $e) {
+        error_log("Erreur generateFichePaieHTML: " . $e->getMessage());
+        return '';
+    }
+}
+
+
+
+
+
 
 // Fonction pour enregistrer le début de pause
 function startBreak($user_id, $time = null) {

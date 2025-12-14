@@ -59,6 +59,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <i class="fas fa-history"></i>
             <span>salaire</span>
         </a>
+        <a href="fiche.php" class="menu-item <?php echo $current_page == 'fiche.php' ? 'active' : ''; ?>">
+             <i class="fas fa-file-invoice"></i>
+            <span>Fiches de Paie</span>
+        </a>
         <a href="profile.php" class="menu-item <?php echo $current_page == 'profile.php' ? 'active' : ''; ?>">
             <i class="fas fa-user-cog"></i>
             <span>Profil Admin</span>
