@@ -32,28 +32,15 @@ $currentTheme = $preferences['theme'] ?? 'light';
 $message = '';
 $message_type = '';
 
-// Vérifier si la table parametres_salaire existe, sinon la créer
+// Récupérer les paramètres système
 try {
-    $tableExists = $pdo->query("SHOW TABLES LIKE 'parametres_salaire'")->rowCount() > 0;
-    
-    if (!$tableExists) {
-        $pdo->exec("
-            CREATE TABLE parametres_salaire (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                poste_id INT NOT NULL,
-                salaire_brut_mensuel DECIMAL(10,2) NOT NULL,
-                jours_travail_mois INT NOT NULL DEFAULT 22,
-                heures_travail_jour DECIMAL(4,2) NOT NULL DEFAULT 8.0,
-                salaire_horaire DECIMAL(10,2) GENERATED ALWAYS AS (salaire_brut_mensuel / (jours_travail_mois * heures_travail_jour)) STORED,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (poste_id) REFERENCES postes(id) ON DELETE CASCADE,
-                UNIQUE KEY unique_poste (poste_id)
-            )
-        ");
-    }
+    $stmt = $pdo->query("SELECT heure_debut_normal, heure_fin_normal FROM parametres_systeme LIMIT 1");
+    $system_params = $stmt->fetch();
+    $heure_debut_normal = $system_params['heure_debut_normal'] ?? '08:30:00';
+    $heure_fin_normal = $system_params['heure_fin_normal'] ?? '17:30:00';
 } catch(PDOException $e) {
-    error_log("Erreur création table salaire: " . $e->getMessage());
+    $heure_debut_normal = '08:30:00';
+    $heure_fin_normal = '17:30:00';
 }
 
 // Traitement des formulaires
@@ -97,6 +84,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message_type = 'error';
             }
         }
+        // Traitement du paiement
+        elseif ($action === 'payer_salaire') {
+            $user_id = $_POST['user_id'] ?? 0;
+            $mois = $_POST['mois'] ?? date('n');
+            $annee = $_POST['annee'] ?? date('Y');
+            $montant = floatval($_POST['montant'] ?? 0);
+            $methode_paiement = $_POST['methode_paiement'] ?? 'virement';
+            $reference_paiement = $_POST['reference_paiement'] ?? '';
+            
+            if ($user_id > 0 && $montant > 0) {
+                // Vérifier si un paiement existe déjà pour ce mois
+                $stmt = $pdo->prepare("SELECT id FROM salaires_paiements WHERE user_id = ? AND mois = ? AND annee = ?");
+                $stmt->execute([$user_id, $mois, $annee]);
+                $existing_payment = $stmt->fetch();
+                
+                if ($existing_payment) {
+                    // Mettre à jour le paiement existant
+                    $stmt = $pdo->prepare("
+                        UPDATE salaires_paiements 
+                        SET montant = ?, statut = 'paye', date_paiement = NOW(), 
+                            methode_paiement = ?, reference_paiement = ?, updated_at = NOW()
+                        WHERE id = ?
+                    ");
+                    $stmt->execute([$montant, $methode_paiement, $reference_paiement, $existing_payment['id']]);
+                    $message = "Paiement mis à jour avec succès!";
+                } else {
+                    // Insérer un nouveau paiement
+                    $stmt = $pdo->prepare("
+                        INSERT INTO salaires_paiements (user_id, mois, annee, montant, statut, date_paiement, methode_paiement, reference_paiement)
+                        VALUES (?, ?, ?, ?, 'paye', NOW(), ?, ?)
+                    ");
+                    $stmt->execute([$user_id, $mois, $annee, $montant, $methode_paiement, $reference_paiement]);
+                    $message = "Paiement enregistré avec succès!";
+                }
+                
+                // Réinitialiser les heures de travail pour le mois suivant (en créant un historique)
+                $mois_suivant = $mois == 12 ? 1 : $mois + 1;
+                $annee_suivant = $mois == 12 ? $annee + 1 : $annee;
+                
+                // On peut également marquer les présences comme payées pour éviter de les recompter
+                // Pour cela, nous pourrions ajouter un champ "paye" dans la table presences
+                // ou créer une table d'historique des heures payées
+                
+                // Pour l'instant, on va juste enregistrer le paiement
+                
+                $message_type = 'success';
+            } else {
+                $message = "Données de paiement invalides";
+                $message_type = 'error';
+            }
+        }
     } catch(PDOException $e) {
         $message = "Erreur: " . $e->getMessage();
         $message_type = 'error';
@@ -105,9 +143,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Récupérer les données pour le tableau
 $salaireData = [];
-$currentMonth = date('Y-m');
-$monthStart = date('Y-m-01');
-$monthEnd = date('Y-m-t');
+$currentMonth = $_GET['month'] ?? date('Y-m');
+$currentYear = date('Y', strtotime($currentMonth));
+$currentMonthNum = date('m', strtotime($currentMonth));
+$monthStart = date('Y-m-01', strtotime($currentMonth));
+$monthEnd = date('Y-m-t', strtotime($currentMonth));
 
 try {
     // Récupérer tous les utilisateurs (sauf admin) avec leurs postes et configurations de salaire
@@ -131,49 +171,89 @@ try {
     $stmt->execute();
     $users = $stmt->fetchAll();
     
-    // Pour chaque utilisateur, calculer les heures travaillées
+    // Pour chaque utilisateur, calculer les heures travaillées selon les nouvelles règles
     foreach ($users as $user) {
-        // Calculer les heures travaillées pour le mois en cours
+        // Calculer les heures travaillées pour le mois en cours avec les nouvelles règles
         $stmt = $pdo->prepare("
             SELECT 
-                COUNT(*) as jours_presents,
-                SUM(
-                    TIME_TO_SEC(
-                        TIMEDIFF(
-                            COALESCE(heure_fin_reel, '17:30:00'), 
-                            heure_debut_reel
-                        )
-                    ) / 3600 -
-                    COALESCE(
-                        TIME_TO_SEC(
-                            TIMEDIFF(
-                                COALESCE(fin_pause_reel, debut_pause_reel),
-                                COALESCE(debut_pause_reel, heure_debut_reel)
-                            )
-                        ) / 3600,
-                        0
-                    )
-                ) as heures_travail_mois,
-                SUM(retard_minutes) as retard_total_minutes
+                date_presence,
+                heure_debut_reel,
+                heure_fin_reel,
+                retard_minutes
             FROM presences
             WHERE user_id = ?
                 AND date_presence BETWEEN ? AND ?
                 AND heure_debut_reel IS NOT NULL
+            ORDER BY date_presence
         ");
         $stmt->execute([$user['user_id'], $monthStart, $monthEnd]);
-        $presenceData = $stmt->fetch();
+        $presences = $stmt->fetchAll();
         
-        // Ajouter les données de présence à l'utilisateur
-        $user['jours_presents'] = $presenceData['jours_presents'] ?? 0;
-        $user['heures_travail_mois'] = round($presenceData['heures_travail_mois'] ?? 0, 2);
-        $user['retard_total_minutes'] = $presenceData['retard_total_minutes'] ?? 0;
+        $jours_presents = 0;
+        $heures_travail_mois = 0;
+        $retard_total_minutes = 0;
+        
+        foreach ($presences as $presence) {
+            // Règle 1: Heure de début ajustée
+            $heure_debut = $presence['heure_debut_reel'];
+            if (strtotime($heure_debut) < strtotime($heure_debut_normal)) {
+                $heure_debut = $heure_debut_normal;
+            }
+            
+            // Règle 2: Heure de fin ajustée
+            $heure_fin = $presence['heure_fin_reel'] ?: $heure_fin_normal;
+            
+            // Calcul de la durée de travail de la journée
+            $duree_secondes = strtotime($heure_fin) - strtotime($heure_debut);
+            $duree_heures = $duree_secondes / 3600;
+            
+            // Règle 3: Soustraire 1h de pause
+            $duree_heures -= 1;
+            
+            // Règle 4: Limiter à 8h maximum par jour
+            if ($duree_heures > 8) {
+                $duree_heures = 8;
+            }
+            
+            // Règle 5: Ignorer les jours avec durée négative ou nulle (imprévus)
+            if ($duree_heures > 0) {
+                $jours_presents++;
+                $heures_travail_mois += $duree_heures;
+                $retard_total_minutes += $presence['retard_minutes'];
+            }
+        }
+        
+        // Vérifier si un paiement a déjà été effectué pour ce mois
+        $stmt = $pdo->prepare("
+            SELECT montant, statut, date_paiement 
+            FROM salaires_paiements 
+            WHERE user_id = ? AND mois = ? AND annee = ?
+        ");
+        $stmt->execute([$user['user_id'], $currentMonthNum, $currentYear]);
+        $paiement = $stmt->fetch();
         
         // Calculer le salaire brut
-        if ($user['salaire_horaire'] && $user['heures_travail_mois'] > 0) {
-            $user['salaire_brut'] = $user['heures_travail_mois'] * $user['salaire_horaire'];
-        } else {
-            $user['salaire_brut'] = 0;
+        $salaire_brut = 0;
+        $deja_paye = false;
+        $montant_paye = 0;
+        
+        if ($paiement) {
+            $deja_paye = true;
+            $montant_paye = $paiement['montant'];
+            $salaire_brut = $montant_paye; // Pour l'affichage, on montre le montant payé
+        } elseif ($user['salaire_horaire'] && $heures_travail_mois > 0) {
+            $salaire_brut = $heures_travail_mois * $user['salaire_horaire'];
         }
+        
+        // Ajouter les données de présence à l'utilisateur
+        $user['jours_presents'] = $jours_presents;
+        $user['heures_travail_mois'] = round($heures_travail_mois, 2);
+        $user['retard_total_minutes'] = $retard_total_minutes;
+        $user['salaire_brut'] = round($salaire_brut, 2);
+        $user['deja_paye'] = $deja_paye;
+        $user['montant_paye'] = $montant_paye;
+        $user['date_paiement'] = $paiement['date_paiement'] ?? null;
+        $user['statut_paiement'] = $paiement['statut'] ?? 'non_paye';
         
         $salaireData[] = $user;
     }
@@ -197,14 +277,24 @@ try {
         'total_salaire_brut' => 0,
         'moyenne_salaire_horaire' => 0,
         'postes_configures' => 0,
-        'total_heures_travail' => 0
+        'total_heures_travail' => 0,
+        'total_payes' => 0,
+        'total_non_payes' => 0
     ];
     
     foreach ($salaireData as $data) {
         $stats['total_employes']++;
         $stats['total_heures_travail'] += $data['heures_travail_mois'];
-        if ($data['salaire_horaire']) {
+        
+        if ($data['deja_paye']) {
+            $stats['total_salaire_brut'] += $data['montant_paye'];
+            $stats['total_payes']++;
+        } else {
             $stats['total_salaire_brut'] += $data['salaire_brut'];
+            $stats['total_non_payes']++;
+        }
+        
+        if ($data['salaire_horaire']) {
             $stats['moyenne_salaire_horaire'] += $data['salaire_horaire'];
         }
     }
@@ -227,7 +317,9 @@ try {
         'total_salaire_brut' => 0,
         'moyenne_salaire_horaire' => 0,
         'postes_configures' => 0,
-        'total_heures_travail' => 0
+        'total_heures_travail' => 0,
+        'total_payes' => 0,
+        'total_non_payes' => 0
     ];
 }
 ?>
@@ -456,6 +548,17 @@ try {
             box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3);
         }
 
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger), #dc2626);
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.3);
+        }
+
         .btn-sm {
             padding: 6px 12px;
             font-size: 12px;
@@ -645,6 +748,12 @@ try {
             border: 1px solid rgba(239, 68, 68, 0.3);
         }
 
+        .badge-info {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.2));
+            color: var(--info);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
         /* Status indicators */
         .status-indicator {
             display: inline-flex;
@@ -672,6 +781,10 @@ try {
 
         .status-dot.pending {
             background-color: var(--warning);
+        }
+
+        .status-dot.paid {
+            background-color: var(--info);
         }
 
         /* Currency formatting */
@@ -1009,7 +1122,7 @@ try {
 
         <!-- Alert Messages -->
         <?php if ($message): ?>
-            <div class="alert alert-<?php echo $message_type; ?>">
+            <div class="alert alert-<?php echo $message_type === 'success' ? 'success' : ($message_type === 'error' ? 'error' : 'warning'); ?>">
                 <i class="fas fa-<?php echo $message_type === 'success' ? 'check' : ($message_type === 'error' ? 'exclamation' : 'info'); ?>-circle"></i>
                 <span><?php echo $message; ?></span>
             </div>
@@ -1047,10 +1160,10 @@ try {
             
             <div class="stat-card fade-in" style="animation-delay: 0.3s;">
                 <div class="stat-icon">
-                    <i class="fas fa-briefcase"></i>
+                    <i class="fas fa-money-check"></i>
                 </div>
-                <div class="stat-value"><?php echo $stats['postes_configures']; ?>/<?php echo count($allPostes); ?></div>
-                <div class="stat-label">Postes Configurés</div>
+                <div class="stat-value"><?php echo $stats['total_payes']; ?>/<?php echo $stats['total_employes']; ?></div>
+                <div class="stat-label">Employés Payés</div>
             </div>
         </div>
 
@@ -1084,7 +1197,7 @@ try {
                     <div class="form-group">
                         <label for="salaire_brut_mensuel">Salaire Brut Mensuel (FCFA) *</label>
                         <input type="number" id="salaire_brut_mensuel" name="salaire_brut_mensuel" 
-                               class="form-control" required min="0" step="1000"
+                               class="form-control" required min="0" step="any"
                                placeholder="Ex: 500000"
                                value="<?php echo $_POST['salaire_brut_mensuel'] ?? ''; ?>">
                         <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
@@ -1095,7 +1208,7 @@ try {
                     <div class="form-group">
                         <label for="jours_travail_mois">Jours de Travail par Mois *</label>
                         <input type="number" id="jours_travail_mois" name="jours_travail_mois" 
-                               class="form-control" required min="1" max="31" step="1"
+                               class="form-control" required min="1" max="31" step="any"
                                placeholder="Ex: 22"
                                value="<?php echo $_POST['jours_travail_mois'] ?? '22'; ?>">
                         <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
@@ -1192,11 +1305,14 @@ try {
                 
                 <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
                     <h4 style="margin: 0 0 10px 0; color: var(--text-primary); font-size: 14px;">
-                        <i class="fas fa-lightbulb"></i> Information
+                        <i class="fas fa-lightbulb"></i> Règles de calcul
                     </h4>
                     <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.4;">
-                        Le taux horaire est calculé automatiquement : <br>
-                        <strong>Salaire horaire = Salaire mensuel ÷ (Jours travail × Heures/jour)</strong>
+                        • Début < 8h30 → 8h30<br>
+                        • Fin non définie → 17h30<br>
+                        • 1h de pause déduite par jour<br>
+                        • Maximum 8h/jour après pause<br>
+                        • Taux horaire = Salaire mensuel ÷ (Jours × Heures/jour)
                     </p>
                 </div>
             </div>
@@ -1234,6 +1350,7 @@ try {
                             <th><i class="fas fa-money-bill"></i> Taux Horaire</th>
                             <th><i class="fas fa-calculator"></i> Salaire Brut</th>
                             <th><i class="fas fa-percentage"></i> État</th>
+                            <th><i class="fas fa-cogs"></i> Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1245,10 +1362,14 @@ try {
                             $status_icon = 'exclamation-circle';
                             
                             if ($has_config) {
-                                if ($data['heures_travail_mois'] > 0) {
-                                    $status_class = 'active';
-                                    $status_text = 'Calculé';
+                                if ($data['deja_paye']) {
+                                    $status_class = 'paid';
+                                    $status_text = 'Payé';
                                     $status_icon = 'check-circle';
+                                } elseif ($data['heures_travail_mois'] > 0) {
+                                    $status_class = 'active';
+                                    $status_text = 'À payer';
+                                    $status_icon = 'money-bill-wave';
                                 } else {
                                     $status_class = 'inactive';
                                     $status_text = 'Absent';
@@ -1301,7 +1422,15 @@ try {
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if ($has_config && $data['salaire_brut'] > 0): ?>
+                                <?php if ($data['deja_paye']): ?>
+                                    <div class="currency" style="font-size: 16px; font-weight: 700; color: var(--info);">
+                                        <?php echo number_format($data['montant_paye'], 0, ',', ' '); ?> FCFA
+                                        <br>
+                                        <small style="font-size: 11px; color: var(--text-secondary);">
+                                            Payé le <?php echo date('d/m/Y', strtotime($data['date_paiement'])); ?>
+                                        </small>
+                                    </div>
+                                <?php elseif ($has_config && $data['salaire_brut'] > 0): ?>
                                     <div class="currency" style="font-size: 16px; font-weight: 700; color: var(--success);">
                                         <?php echo number_format($data['salaire_brut'], 0, ',', ' '); ?> FCFA
                                     </div>
@@ -1318,12 +1447,27 @@ try {
                                     <i class="fas fa-<?php echo $status_icon; ?>" style="margin-left: 4px;"></i>
                                 </div>
                             </td>
+                            <td>
+                                <?php if ($has_config && !$data['deja_paye'] && $data['salaire_brut'] > 0): ?>
+                                    <button class="btn btn-success btn-sm" onclick="openPaymentModal(<?php echo $data['user_id']; ?>, '<?php echo htmlspecialchars($data['user_nom']); ?>', <?php echo $data['salaire_brut']; ?>)">
+                                        <i class="fas fa-money-check"></i> Payer
+                                    </button>
+                                <?php elseif ($data['deja_paye']): ?>
+                                    <button class="btn btn-info btn-sm" onclick="viewPaymentDetails(<?php echo $data['user_id']; ?>, <?php echo $currentMonthNum; ?>, <?php echo $currentYear; ?>)">
+                                        <i class="fas fa-eye"></i> Détails
+                                    </button>
+                                <?php else: ?>
+                                    <button class="btn btn-secondary btn-sm" disabled>
+                                        <i class="fas fa-ban"></i> N/A
+                                    </button>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                         <?php endforeach; ?>
                         
                         <?php if (empty($salaireData)): ?>
                         <tr>
-                            <td colspan="8" class="empty-state">
+                            <td colspan="9" class="empty-state">
                                 <i class="fas fa-user-slash"></i>
                                 <h3>Aucun employé trouvé</h3>
                                 <p>Les données salariales apparaîtront ici une fois configurées</p>
@@ -1339,8 +1483,10 @@ try {
                 <div>
                     <i class="fas fa-info-circle"></i> 
                     <?php echo count($salaireData); ?> employé(s) - 
-                    Total heures : <strong><?php echo number_format($stats['total_heures_travail'], 1, ',', ' '); ?> h</strong>
-                    - Total salarial : <strong><?php echo number_format($stats['total_salaire_brut'], 0, ',', ' '); ?> FCFA</strong>
+                    Payés: <?php echo $stats['total_payes']; ?> | 
+                    À payer: <?php echo $stats['total_non_payes']; ?> - 
+                    Total heures: <strong><?php echo number_format($stats['total_heures_travail'], 1, ',', ' '); ?> h</strong>
+                    - Total salarial: <strong><?php echo number_format($stats['total_salaire_brut'], 0, ',', ' '); ?> FCFA</strong>
                 </div>
                 <div>
                     <span style="color: var(--text-secondary); font-size: 12px;">
@@ -1352,6 +1498,214 @@ try {
             <?php endif; ?>
         </div>
     </main>
+
+    <!-- Modal de paiement -->
+  <!-- Modal de paiement -->
+<div id="paymentModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-money-check"></i> Paiement de Salaire</h3>
+            <button class="close" onclick="closePaymentModal()">&times;</button>
+        </div>
+        <form id="paymentForm" method="POST">
+            <input type="hidden" name="action" value="payer_salaire">
+            <input type="hidden" name="user_id" id="payment_user_id">
+            <input type="hidden" name="mois" value="<?php echo $currentMonthNum; ?>">
+            <input type="hidden" name="annee" value="<?php echo $currentYear; ?>">
+            
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="payment_employee">Employé</label>
+                    <input type="text" id="payment_employee" class="form-control" readonly>
+                </div>
+                
+                <div class="form-group">
+                    <label for="payment_amount">Montant à payer (FCFA)</label>
+                    
+                    <!-- MODIFICATION ICI : Augmentation de la valeur max et du step -->
+                    <input type="number" 
+                           id="payment_amount" 
+                           name="montant" 
+                           class="form-control" 
+                           required 
+                           min="0" 
+                           step="any" 
+                           max="100000000"
+                           style="font-size: 18px; font-weight: 600; text-align: center;">
+                    
+                    <div style="display: flex; gap: 5px; margin-top: 10px;">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAmount(50000)">50 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAmount(100000)">100 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="setAmount(150000)">150 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="setAmount(200000)">200 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-success" onclick="setAmount(300000)">300 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-success" onclick="setAmount(500000)">500 000</button>
+                    </div>
+                    
+                    <div style="display: flex; gap: 5px; margin-top: 5px;">
+                        <button type="button" class="btn btn-xs btn-secondary" onclick="adjustAmount(-10000)">-10 000</button>
+                        <button type="button" class="btn btn-xs btn-secondary" onclick="adjustAmount(-50000)">-50 000</button>
+                        <button type="button" class="btn btn-xs btn-info" onclick="resetToOriginal()">Réinitialiser</button>
+                        <button type="button" class="btn btn-xs btn-success" onclick="adjustAmount(10000)">+10 000</button>
+                        <button type="button" class="btn btn-xs btn-success" onclick="adjustAmount(50000)">+50 000</button>
+                    </div>
+                    
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 8px; display: block;">
+                        <i class="fas fa-info-circle"></i> 
+                        Montant calculé: <span id="calculated_amount" style="font-weight: 600; color: var(--success);">0</span> FCFA
+                        | Min: 0 FCFA | Max: 100,000,000 FCFA
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="payment_method">Méthode de paiement</label>
+                    <select id="payment_method" name="methode_paiement" class="form-control" required>
+                        <option value="virement">Virement bancaire</option>
+                        <option value="especes">Espèces</option>
+                        <option value="cheque">Chèque</option>
+                        <option value="mobile">Mobile Money</option>
+                        <option value="autre">Autre</option>
+                    </select>
+                </div>
+                
+                <!-- Reste du code reste inchangé -->
+                <div class="form-group">
+                    <label for="payment_reference">Référence de paiement</label>
+                    <input type="text" id="payment_reference" name="reference_paiement" class="form-control" placeholder="N° de transaction, référence...">
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Optionnel - Pour le suivi
+                    </small>
+                </div>
+                
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Attention: Cette action marquera le salaire comme payé pour le mois de <?php echo date('F Y', strtotime($currentMonth)); ?>.</span>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closePaymentModal()">
+                    <i class="fas fa-times"></i> Annuler
+                </button>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-check"></i> Confirmer le paiement
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- Modal de paiement - Version corrigée -->
+<div id="paymentModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-money-check"></i> Paiement de Salaire</h3>
+            <button class="close" onclick="closePaymentModal()">&times;</button>
+        </div>
+        <form id="paymentForm" method="POST">
+            <input type="hidden" name="action" value="payer_salaire">
+            <input type="hidden" name="user_id" id="payment_user_id">
+            <input type="hidden" name="mois" value="<?php echo $currentMonthNum; ?>">
+            <input type="hidden" name="annee" value="<?php echo $currentYear; ?>">
+            
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="payment_employee">Employé</label>
+                    <input type="text" id="payment_employee" class="form-control" readonly>
+                </div>
+                
+                <div class="form-group">
+                    <label for="payment_amount">Montant à payer (FCFA)</label>
+                    
+                    <!-- CHAMP CORRIGÉ : Pas de step, pas de min, pas de max -->
+                    <input type="number" 
+                           id="payment_amount" 
+                           name="montant" 
+                           class="form-control" 
+                           required 
+                           style="font-size: 18px; font-weight: 600; text-align: center;"
+                           placeholder="Entrez le montant exact">
+                    
+                    <!-- Boutons pour entrer rapidement des montants -->
+                    <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px;">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAmount(50000)">50 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAmount(75000)">75 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="setAmount(100000)">100 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="setAmount(150000)">150 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-success" onclick="setAmount(200000)">200 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-success" onclick="setAmount(300000)">300 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-success" onclick="setAmount(500000)">500 000</button>
+                        <button type="button" class="btn btn-sm btn-outline-warning" onclick="setAmount(1000000)">1 000 000</button>
+                    </div>
+                    
+                    <!-- Permettre d'entrer n'importe quel montant -->
+                    <div style="margin-top: 10px; display: flex; gap: 5px;">
+                        <button type="button" class="btn btn-xs btn-secondary" onclick="adjustAmount(-10000)">-10 000</button>
+                        <button type="button" class="btn btn-xs btn-secondary" onclick="adjustAmount(-1000)">-1 000</button>
+                        <button type="button" class="btn btn-xs btn-secondary" onclick="adjustAmount(-100)">-100</button>
+                        <button type="button" class="btn btn-xs btn-info" onclick="resetToOriginal()">Montant calculé</button>
+                        <button type="button" class="btn btn-xs btn-success" onclick="adjustAmount(100)">+100</button>
+                        <button type="button" class="btn btn-xs btn-success" onclick="adjustAmount(1000)">+1 000</button>
+                        <button type="button" class="btn btn-xs btn-success" onclick="adjustAmount(10000)">+10 000</button>
+                    </div>
+                    
+                    <!-- Montant personnalisé -->
+                    <div style="margin-top: 10px;">
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="enterCustomAmount()">
+                            <i class="fas fa-edit"></i> Entrer un montant exact...
+                        </button>
+                    </div>
+                    
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 8px; display: block;">
+                        <i class="fas fa-info-circle"></i> 
+                        Montant calculé: <span id="calculated_amount" style="font-weight: 600; color: var(--success);">0</span> FCFA
+                        | Vous pouvez entrer n'importe quel montant (ex: 175 500, 248 750, etc.)
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="payment_method">Méthode de paiement</label>
+                    <select id="payment_method" name="methode_paiement" class="form-control" required>
+                        <option value="virement">Virement bancaire</option>
+                        <option value="especes">Espèces</option>
+                        <option value="cheque">Chèque</option>
+                        <option value="mobile">Mobile Money</option>
+                        <option value="autre">Autre</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="payment_reference">Référence de paiement</label>
+                    <input type="text" id="payment_reference" name="reference_paiement" class="form-control" placeholder="N° de transaction, référence...">
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Optionnel - Pour le suivi
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="payment_notes">Notes additionnelles</label>
+                    <textarea id="payment_notes" name="notes" class="form-control" rows="2" placeholder="Ex: Prime exceptionnelle, Avance sur salaire, Retenue pour absences..."></textarea>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Optionnel - Justification du montant payé
+                    </small>
+                </div>
+                
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Attention: Cette action marquera le salaire comme payé pour le mois de <?php echo date('F Y', strtotime($currentMonth)); ?>.</span>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closePaymentModal()">
+                    <i class="fas fa-times"></i> Annuler
+                </button>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-check"></i> Confirmer le paiement
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -1461,6 +1815,46 @@ try {
                 });
         }
         
+        // Ouvrir le modal de paiement
+        function openPaymentModal(userId, employeeName, amount) {
+            document.getElementById('payment_user_id').value = userId;
+            document.getElementById('payment_employee').value = employeeName;
+            document.getElementById('payment_amount').value = Math.round(amount);
+            document.getElementById('calculated_amount').textContent = formatCurrency(amount);
+            
+            document.getElementById('paymentModal').style.display = 'flex';
+        }
+        
+        // Fermer le modal de paiement
+        function closePaymentModal() {
+            document.getElementById('paymentModal').style.display = 'none';
+            document.getElementById('paymentForm').reset();
+        }
+        
+        // Voir les détails de paiement
+        function viewPaymentDetails(userId, month, year) {
+            fetch(`ajax/get_payment_details.php?user_id=${userId}&month=${month}&year=${year}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        let details = `Paiement du ${new Date(data.payment.date_paiement).toLocaleDateString('fr-FR')}\n`;
+                        details += `Montant: ${formatCurrency(data.payment.montant)} FCFA\n`;
+                        details += `Méthode: ${data.payment.methode_paiement}\n`;
+                        if (data.payment.reference_paiement) {
+                            details += `Référence: ${data.payment.reference_paiement}`;
+                        }
+                        
+                        alert(details);
+                    } else {
+                        showNotification('Erreur', 'Impossible de récupérer les détails du paiement', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showNotification('Erreur', 'Une erreur est survenue', 'error');
+                });
+        }
+        
         // Fonction pour effacer la recherche
         function clearSearch() {
             const tableSearch = document.getElementById('tableSearch');
@@ -1483,7 +1877,7 @@ try {
                 if (countElement) {
                     const parts = countElement.innerHTML.split('-');
                     if (parts.length > 1) {
-                        countElement.innerHTML = `<i class="fas fa-info-circle"></i> ${count} employé(s) - ${parts[1]}`;
+                        countElement.innerHTML = `<i class="fas fa-info-circle"></i> ${count} employé(s) - ${parts.slice(1).join('-')}`;
                     }
                 }
             }
@@ -1648,6 +2042,32 @@ try {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
             }, 3000);
+            
+            return true;
+        });
+        
+        // Gestion du formulaire de paiement
+        document.getElementById('paymentForm').addEventListener('submit', function(e) {
+            const amount = document.getElementById('payment_amount').value;
+            const method = document.getElementById('payment_method').value;
+            
+            if (!amount || parseFloat(amount) <= 0) {
+                e.preventDefault();
+                showNotification('Erreur', 'Veuillez saisir un montant valide', 'error');
+                return false;
+            }
+            
+            if (!method) {
+                e.preventDefault();
+                showNotification('Erreur', 'Veuillez sélectionner une méthode de paiement', 'error');
+                return false;
+            }
+            
+            // Afficher un indicateur de chargement
+            const btn = this.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Traitement...';
+            btn.disabled = true;
             
             return true;
         });

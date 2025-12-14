@@ -114,6 +114,34 @@ try {
     <meta name="apple-mobile-web-app-title" content="Ziris">
     
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Dans la section <head> de dashboard.php -->
+<script>
+    // Enregistrement du Service Worker au chargement
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            console.log('Enregistrement du Service Worker...');
+            navigator.serviceWorker.register('https://ziris.global-logistique.com/sw.js')
+                .then(function(registration) {
+                    console.log('Service Worker enregistré avec succès:', registration.scope);
+                    
+                    // Vérifier les mises à jour
+                    registration.addEventListener('updatefound', () => {
+                        console.log('Nouveau Service Worker trouvé');
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                console.log('Nouveau Service Worker installé, rechargement...');
+                                window.location.reload();
+                            }
+                        });
+                    });
+                })
+                .catch(function(error) {
+                    console.log('Erreur enregistrement ServiceWorker:', error);
+                });
+        });
+    }
+</script>
 </head>
 <body>
     <!-- Header -->
