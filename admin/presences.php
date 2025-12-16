@@ -35,6 +35,128 @@ $period = isset($_GET['period']) ? $_GET['period'] : 'daily';
 $date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
 
 $presences = getPresencesByPeriod($period, $date);
+
+// Récupérer la liste des lieux autorisés pour la vérification
+$lieux_autorises = [];
+try {
+    $stmt = $pdo->query("SELECT * FROM lieux_autorises WHERE est_actif = 1 ORDER BY quartier, ville");
+    $lieux_autorises = $stmt->fetchAll();
+    
+    // Créer une liste des quartiers autorisés pour vérification rapide
+    $quartiers_autorises = [];
+    $villes_autorisees = [];
+    $noms_lieux_autorises = [];
+    
+    foreach ($lieux_autorises as $lieu) {
+        if (!empty($lieu['quartier'])) {
+            $quartiers_autorises[] = strtolower(trim($lieu['quartier']));
+        }
+        if (!empty($lieu['ville'])) {
+            $villes_autorisees[] = strtolower(trim($lieu['ville']));
+        }
+        if (!empty($lieu['nom_lieu'])) {
+            $noms_lieux_autorises[] = strtolower(trim($lieu['nom_lieu']));
+        }
+    }
+} catch(PDOException $e) {
+    // Table non existante, on utilise des valeurs par défaut
+    $lieux_autorises = [];
+    $quartiers_autorises = ['cite des palmiers', 'akwa', 'bépanda'];
+    $villes_autorisees = ['douala', 'carrières-sous-poissy'];
+    $noms_lieux_autorises = ['mnlv africa', 'cite des palmiers'];
+}
+
+// Fonction pour vérifier si un lieu est autorisé
+// Fonction pour vérifier si un lieu est autorisé (quartier OBLIGATOIRE)
+function estLieuAutorise($lieu, $quartiers_autorises, $villes_autorisees, $noms_lieux_autorises) {
+    if (empty($lieu)) return true; // Lieu vide considéré comme OK
+    
+    $lieu_lower = strtolower(trim($lieu));
+    
+    // Étape 1: Vérifier si le lieu contient un quartier autorisé
+    $has_quartier = false;
+    foreach ($quartiers_autorises as $quartier) {
+        if (strpos($lieu_lower, $quartier) !== false) {
+            $has_quartier = true;
+            break;
+        }
+    }
+    
+    // Si PAS de quartier autorisé → DIRECTEMENT SUSPECT
+    if (!$has_quartier) {
+        return false;
+    }
+    
+    // Étape 2: Maintenant vérifier la ville (seulement si quartier OK)
+    foreach ($villes_autorisees as $ville) {
+        if (strpos($lieu_lower, $ville) !== false) {
+            return true; // Quartier OK + Ville OK = AUTORISÉ
+        }
+    }
+    
+    // Étape 3: Vérifier les noms complets de lieux (pour exceptions)
+    foreach ($noms_lieux_autorises as $nom_lieu) {
+        if (strpos($lieu_lower, $nom_lieu) !== false) {
+            return true; // Nom complet de lieu = AUTORISÉ (même sans vérification ville)
+        }
+    }
+    
+    return false; // Quartier OK mais ville non autorisée = SUSPECT
+}
+
+// Traitement de l'ajout d'un lieu autorisé
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajouter_lieu'])) {
+    $nom_lieu = trim($_POST['nom_lieu']);
+    $quartier = trim($_POST['quartier']);
+    $ville = trim($_POST['ville']);
+    $pays = trim($_POST['pays']);
+    $rayon_autorise_km = floatval($_POST['rayon_autorise_km']);
+    
+    if (!empty($nom_lieu) && !empty($ville)) {
+        try {
+            // Vérifier si le lieu existe déjà
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM lieux_autorises WHERE nom_lieu = ? AND quartier = ? AND ville = ?");
+            $stmt->execute([$nom_lieu, $quartier, $ville]);
+            $exists = $stmt->fetchColumn();
+            
+            if ($exists == 0) {
+                // Ajouter le nouveau lieu
+                $stmt = $pdo->prepare("INSERT INTO lieux_autorises (nom_lieu, quartier, ville, pays, rayon_autorise_km, est_actif, created_at, updated_at) 
+                                      VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())");
+                $stmt->execute([$nom_lieu, $quartier, $ville, $pays, $rayon_autorise_km]);
+                
+                $message_success = "Lieu ajouté avec succès !";
+                
+                // Mettre à jour la liste des lieux autorisés
+                $stmt = $pdo->query("SELECT * FROM lieux_autorises WHERE est_actif = 1 ORDER BY quartier, ville");
+                $lieux_autorises = $stmt->fetchAll();
+                
+                // Mettre à jour les listes de vérification
+                $quartiers_autorises = [];
+                $villes_autorisees = [];
+                $noms_lieux_autorises = [];
+                
+                foreach ($lieux_autorises as $lieu) {
+                    if (!empty($lieu['quartier'])) {
+                        $quartiers_autorises[] = strtolower(trim($lieu['quartier']));
+                    }
+                    if (!empty($lieu['ville'])) {
+                        $villes_autorisees[] = strtolower(trim($lieu['ville']));
+                    }
+                    if (!empty($lieu['nom_lieu'])) {
+                        $noms_lieux_autorises[] = strtolower(trim($lieu['nom_lieu']));
+                    }
+                }
+            } else {
+                $message_error = "Ce lieu existe déjà dans la base de données.";
+            }
+        } catch(PDOException $e) {
+            $message_error = "Erreur lors de l'ajout du lieu : " . $e->getMessage();
+        }
+    } else {
+        $message_error = "Le nom du lieu et la ville sont obligatoires.";
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr" data-theme="<?php echo $currentTheme; ?>">
@@ -54,16 +176,6 @@ $presences = getPresencesByPeriod($period, $date);
     <meta name="apple-mobile-web-app-title" content="Ziris">
     <link rel="apple-touch-icon" href="icons/icon-152x152.png">
     <link rel="manifest" href="/manifest.json">
-
-    <!-- PWA Configuration -->
-    <link rel="manifest" href="/manifest.json">
-    <link rel="stylesheet" href="/pwa-install.css">
-    <script src="/pwa-install.js" defer></script>
-    <meta name="theme-color" content="#4361ee"/>
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Ziris">
 
     <!-- CSS supplémentaire pour le thème -->
     <style>
@@ -88,6 +200,9 @@ $presences = getPresencesByPeriod($period, $date);
             --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             --transition: all 0.3s ease;
             --border-radius: 12px;
+            --suspicion-bg: #fff5f5;
+            --suspicion-border: #feb2b2;
+            --suspicion-text: #c53030;
         }
 
         [data-theme="dark"] {
@@ -98,6 +213,9 @@ $presences = getPresencesByPeriod($period, $date);
             --text-secondary: #adb5bd;
             --border-color: #404040;
             --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            --suspicion-bg: #2a1a1a;
+            --suspicion-border: #742a2a;
+            --suspicion-text: #fc8181;
         }
 
         /* Appliquer les variables CSS au body */
@@ -242,7 +360,7 @@ $presences = getPresencesByPeriod($period, $date);
             outline: none;
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%234361ee' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org2000/svg' width='16' height='16' fill='%234361ee' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E");
         }
 
         /* Buttons */
@@ -280,6 +398,17 @@ $presences = getPresencesByPeriod($period, $date);
         .btn-secondary:hover {
             background: var(--bg-primary);
             border-color: var(--primary);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger), #dc2626);
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.3);
         }
 
         /* Table Styling */
@@ -349,6 +478,12 @@ $presences = getPresencesByPeriod($period, $date);
             border: 1px solid rgba(245, 158, 11, 0.3);
         }
 
+        .badge-danger {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.2));
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
         /* Lieu Information - Style amélioré */
         .lieu-container {
             max-width: 200px;
@@ -374,6 +509,20 @@ $presences = getPresencesByPeriod($period, $date);
             border-radius: 6px;
             border-left: 3px solid var(--primary);
             margin-bottom: 4px;
+            transition: var(--transition);
+        }
+
+        /* Style pour lieu suspect/non autorisé */
+        .lieu-suspect {
+            background: var(--suspicion-bg) !important;
+            color: var(--suspicion-text) !important;
+            border-left: 3px solid var(--danger) !important;
+            border: 1px solid var(--suspicion-border) !important;
+            animation: pulseWarning 2s infinite;
+        }
+
+        .lieu-suspect .lieu-title {
+            color: var(--suspicion-text) !important;
         }
 
         .text-muted {
@@ -446,6 +595,10 @@ $presences = getPresencesByPeriod($period, $date);
 
         .stat-icon.pause {
             background: linear-gradient(135deg, var(--info), #2563eb);
+        }
+
+        .stat-icon.suspect {
+            background: linear-gradient(135deg, var(--danger), #dc2626);
         }
 
         .stat-content h3 {
@@ -577,9 +730,122 @@ $presences = getPresencesByPeriod($period, $date);
             }
         }
 
+        @keyframes pulseWarning {
+            0% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+            }
+            70% {
+                box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+        }
+
         .fade-in {
             animation: fadeIn 0.6s ease forwards;
             opacity: 0;
+        }
+
+        /* Filter Suspect Button */
+        .filter-suspect-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .filter-suspect-btn.active {
+            background: linear-gradient(135deg, var(--danger), #dc2626);
+            color: white;
+            border-color: transparent;
+        }
+
+        .filter-suspect-btn:hover:not(.active) {
+            background: var(--bg-primary);
+            border-color: var(--danger);
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            width: 90%;
+            max-width: 500px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: var(--text-primary);
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-header h3 i {
+            color: var(--primary);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: var(--transition);
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+            background: var(--bg-secondary);
+        }
+
+        .modal-body {
+            padding: 25px;
+        }
+
+        .modal-footer {
+            padding: 20px 25px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            background: var(--bg-secondary);
         }
 
         /* Responsive Design */
@@ -638,6 +904,11 @@ $presences = getPresencesByPeriod($period, $date);
                 gap: 15px;
                 text-align: center;
             }
+            
+            .modal-content {
+                width: 95%;
+                margin: 10px;
+            }
         }
 
         @media (max-width: 480px) {
@@ -657,6 +928,18 @@ $presences = getPresencesByPeriod($period, $date);
             
             .filters {
                 padding: 20px;
+            }
+            
+            .modal-body {
+                padding: 20px;
+            }
+            
+            .modal-footer {
+                flex-direction: column;
+            }
+            
+            .modal-footer .btn {
+                width: 100%;
             }
         }
 
@@ -715,6 +998,42 @@ $presences = getPresencesByPeriod($period, $date);
             font-size: 12px;
             border: 1px solid var(--border-color);
         }
+
+        /* Legend for suspect locations */
+        .legend {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            padding: 10px 15px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .legend-color.suspect {
+            background: var(--suspicion-bg);
+            border-color: var(--danger);
+        }
+
+        .legend-color.normal {
+            background: var(--bg-secondary);
+            border-color: var(--primary);
+        }
     </style>
 </head>
 <body>
@@ -725,7 +1044,7 @@ $presences = getPresencesByPeriod($period, $date);
         <!-- Page Header -->
         <div class="page-header">
             <h1><i class="fas fa-clipboard-check"></i> Gestion des Présences</h1>
-            <p>Consultez et gérez les présences des employés</p>
+            <p>Consultez et gérez les présences des employés | Vérification automatique des lieux</p>
         </div>
         
         <!-- Period Selector -->
@@ -741,6 +1060,19 @@ $presences = getPresencesByPeriod($period, $date);
             </a>
         </div>
         
+        <!-- Messages -->
+        <?php if (isset($message_success)): ?>
+            <div class="alert alert-success" style="margin-bottom: 20px;">
+                <i class="fas fa-check-circle"></i> <?php echo $message_success; ?>
+            </div>
+        <?php endif; ?>
+        
+        <?php if (isset($message_error)): ?>
+            <div class="alert alert-error" style="margin-bottom: 20px;">
+                <i class="fas fa-exclamation-circle"></i> <?php echo $message_error; ?>
+            </div>
+        <?php endif; ?>
+        
         <!-- Stats Summary -->
         <?php if (!empty($presences)): ?>
         <?php
@@ -749,6 +1081,7 @@ $presences = getPresencesByPeriod($period, $date);
         $onTime = 0;
         $late = 0;
         $withPause = 0;
+        $suspectLieux = 0;
         
         foreach ($presences as $presence) {
             if ($presence['retard_minutes'] <= 0) {
@@ -758,6 +1091,20 @@ $presences = getPresencesByPeriod($period, $date);
             }
             if (!empty($presence['heure_pause_debut']) && !empty($presence['heure_pause_fin'])) {
                 $withPause++;
+            }
+            
+            // Vérifier les lieux suspects
+            if (!empty($presence['lieu']) && !estLieuAutorise($presence['lieu'], $quartiers_autorises, $villes_autorisees, $noms_lieux_autorises)) {
+                $suspectLieux++;
+            }
+            if (!empty($presence['lieu_pause_debut']) && !estLieuAutorise($presence['lieu_pause_debut'], $quartiers_autorises, $villes_autorisees, $noms_lieux_autorises)) {
+                $suspectLieux++;
+            }
+            if (!empty($presence['lieu_pause_fin']) && !estLieuAutorise($presence['lieu_pause_fin'], $quartiers_autorises, $villes_autorisees, $noms_lieux_autorises)) {
+                $suspectLieux++;
+            }
+            if (!empty($presence['lieu_fin']) && !estLieuAutorise($presence['lieu_fin'], $quartiers_autorises, $villes_autorisees, $noms_lieux_autorises)) {
+                $suspectLieux++;
             }
         }
         ?>
@@ -801,6 +1148,28 @@ $presences = getPresencesByPeriod($period, $date);
                     <p>Avec pause</p>
                 </div>
             </div>
+            
+            <div class="stat-item fade-in" style="animation-delay: 0.5s;">
+                <div class="stat-icon suspect">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="stat-content">
+                    <h3><?php echo $suspectLieux; ?></h3>
+                    <p>Lieux suspects</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Legend -->
+        <div class="legend fade-in" style="animation-delay: 0.6s;">
+            <div class="legend-item">
+                <div class="legend-color normal"></div>
+                <span>Lieu autorisé</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color suspect"></div>
+                <span>Lieu suspect / Non autorisé</span>
+            </div>
         </div>
         <?php endif; ?>
         
@@ -838,6 +1207,12 @@ $presences = getPresencesByPeriod($period, $date);
                         <button class="btn btn-secondary" onclick="clearSearch()">
                             <i class="fas fa-times"></i> Effacer
                         </button>
+                        <button class="filter-suspect-btn" onclick="filterSuspectLieux()" id="filterSuspectBtn">
+                            <i class="fas fa-exclamation-triangle"></i> Lieux suspects
+                        </button>
+                        <button class="btn btn-primary" onclick="openAddLieuModal()">
+                            <i class="fas fa-plus-circle"></i> Ajouter lieu
+                        </button>
                         <button class="btn btn-primary" onclick="exportToCSV()">
                             <i class="fas fa-file-export"></i> Exporter CSV
                         </button>
@@ -874,11 +1249,27 @@ $presences = getPresencesByPeriod($period, $date);
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($presences as $index => $presence): ?>
-                            <tr class="fade-in" style="animation-delay: <?php echo $index * 0.05; ?>s;">
+                            <?php foreach ($presences as $index => $presence): 
+                                // Vérifier chaque lieu pour déterminer s'il est suspect
+                                $lieu_arrivee_suspect = !empty($presence['lieu']) && !estLieuAutorise($presence['lieu'], $quartiers_autorises, $villes_autorisees, $noms_lieux_autorises);
+                                $lieu_pause_debut_suspect = !empty($presence['lieu_pause_debut']) && !estLieuAutorise($presence['lieu_pause_debut'], $quartiers_autorises, $villes_autorisees, $noms_lieux_autorises);
+                                $lieu_pause_fin_suspect = !empty($presence['lieu_pause_fin']) && !estLieuAutorise($presence['lieu_pause_fin'], $quartiers_autorises, $villes_autorisees, $noms_lieux_autorises);
+                                $lieu_fin_suspect = !empty($presence['lieu_fin']) && !estLieuAutorise($presence['lieu_fin'], $quartiers_autorises, $villes_autorisees, $noms_lieux_autorises);
+                                
+                                // Déterminer si la ligne entière a des lieux suspects
+                                $has_suspect_lieux = $lieu_arrivee_suspect || $lieu_pause_debut_suspect || $lieu_pause_fin_suspect || $lieu_fin_suspect;
+                            ?>
+                            <tr class="fade-in <?php echo $has_suspect_lieux ? 'has-suspect-lieu' : ''; ?>" 
+                                style="animation-delay: <?php echo $index * 0.05; ?>s; <?php echo $has_suspect_lieux ? 'border-left: 3px solid var(--danger);' : ''; ?>">
+                                
                                 <!-- Employé -->
                                 <td>
                                     <div class="employee-name"><?php echo htmlspecialchars($presence['nom']); ?></div>
+                                    <?php if ($has_suspect_lieux): ?>
+                                        <span class="badge badge-danger" style="margin-top: 4px;">
+                                            <i class="fas fa-exclamation-triangle"></i> Lieu suspect
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
                                 
                                 <!-- Poste -->
@@ -950,7 +1341,19 @@ $presences = getPresencesByPeriod($period, $date);
                                 <td class="lieu-container">
                                     <?php if (!empty($presence['lieu'])): ?>
                                         <div class="lieu-title">Arrivée:</div>
-                                        <div class="lieu-info"><?php echo htmlspecialchars($presence['lieu']); ?></div>
+                                        <div class="lieu-info <?php echo $lieu_arrivee_suspect ? 'lieu-suspect' : ''; ?>">
+                                            <?php echo htmlspecialchars($presence['lieu']); ?>
+                                            <?php if ($lieu_arrivee_suspect): ?>
+                                                <br><small style="color: inherit; opacity: 0.8;">
+                                                    <i class="fas fa-exclamation-circle"></i> Non autorisé
+                                                </small>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if ($lieu_arrivee_suspect): ?>
+                                            <button class="btn btn-secondary btn-sm" style="margin-top: 5px; font-size: 11px; padding: 3px 8px;" onclick="addLieuFromText('<?php echo addslashes($presence['lieu']); ?>')">
+                                                <i class="fas fa-plus"></i> Ajouter ce lieu
+                                            </button>
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="text-muted">Non spécifié</span>
                                     <?php endif; ?>
@@ -960,7 +1363,19 @@ $presences = getPresencesByPeriod($period, $date);
                                 <td class="lieu-container">
                                     <?php if (!empty($presence['lieu_pause_debut'])): ?>
                                         <div class="lieu-title">Pause Début:</div>
-                                        <div class="lieu-info"><?php echo htmlspecialchars($presence['lieu_pause_debut']); ?></div>
+                                        <div class="lieu-info <?php echo $lieu_pause_debut_suspect ? 'lieu-suspect' : ''; ?>">
+                                            <?php echo htmlspecialchars($presence['lieu_pause_debut']); ?>
+                                            <?php if ($lieu_pause_debut_suspect): ?>
+                                                <br><small style="color: inherit; opacity: 0.8;">
+                                                    <i class="fas fa-exclamation-circle"></i> Non autorisé
+                                                </small>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if ($lieu_pause_debut_suspect): ?>
+                                            <button class="btn btn-secondary btn-sm" style="margin-top: 5px; font-size: 11px; padding: 3px 8px;" onclick="addLieuFromText('<?php echo addslashes($presence['lieu_pause_debut']); ?>')">
+                                                <i class="fas fa-plus"></i> Ajouter ce lieu
+                                            </button>
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="text-muted">-</span>
                                     <?php endif; ?>
@@ -970,7 +1385,19 @@ $presences = getPresencesByPeriod($period, $date);
                                 <td class="lieu-container">
                                     <?php if (!empty($presence['lieu_pause_fin'])): ?>
                                         <div class="lieu-title">Pause Fin:</div>
-                                        <div class="lieu-info"><?php echo htmlspecialchars($presence['lieu_pause_fin']); ?></div>
+                                        <div class="lieu-info <?php echo $lieu_pause_fin_suspect ? 'lieu-suspect' : ''; ?>">
+                                            <?php echo htmlspecialchars($presence['lieu_pause_fin']); ?>
+                                            <?php if ($lieu_pause_fin_suspect): ?>
+                                                <br><small style="color: inherit; opacity: 0.8;">
+                                                    <i class="fas fa-exclamation-circle"></i> Non autorisé
+                                                </small>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if ($lieu_pause_fin_suspect): ?>
+                                            <button class="btn btn-secondary btn-sm" style="margin-top: 5px; font-size: 11px; padding: 3px 8px;" onclick="addLieuFromText('<?php echo addslashes($presence['lieu_pause_fin']); ?>')">
+                                                <i class="fas fa-plus"></i> Ajouter ce lieu
+                                            </button>
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="text-muted">-</span>
                                     <?php endif; ?>
@@ -980,7 +1407,19 @@ $presences = getPresencesByPeriod($period, $date);
                                 <td class="lieu-container">
                                     <?php if (!empty($presence['lieu_fin'])): ?>
                                         <div class="lieu-title">Départ:</div>
-                                        <div class="lieu-info"><?php echo htmlspecialchars($presence['lieu_fin']); ?></div>
+                                        <div class="lieu-info <?php echo $lieu_fin_suspect ? 'lieu-suspect' : ''; ?>">
+                                            <?php echo htmlspecialchars($presence['lieu_fin']); ?>
+                                            <?php if ($lieu_fin_suspect): ?>
+                                                <br><small style="color: inherit; opacity: 0.8;">
+                                                    <i class="fas fa-exclamation-circle"></i> Non autorisé
+                                                </small>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if ($lieu_fin_suspect): ?>
+                                            <button class="btn btn-secondary btn-sm" style="margin-top: 5px; font-size: 11px; padding: 3px 8px;" onclick="addLieuFromText('<?php echo addslashes($presence['lieu_fin']); ?>')">
+                                                <i class="fas fa-plus"></i> Ajouter ce lieu
+                                            </button>
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="text-muted">-</span>
                                     <?php endif; ?>
@@ -996,6 +1435,10 @@ $presences = getPresencesByPeriod($period, $date);
                     <div>
                         <i class="fas fa-info-circle"></i> 
                         <?php echo count($presences); ?> présence(s) trouvée(s) pour la période <?php echo $period; ?>
+                        <?php if ($suspectLieux > 0): ?>
+                            | <i class="fas fa-exclamation-triangle" style="color: var(--danger);"></i>
+                            <span style="color: var(--danger);"><?php echo $suspectLieux; ?> lieu(x) suspect(s)</span>
+                        <?php endif; ?>
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button class="btn btn-secondary" onclick="window.print()">
@@ -1004,11 +1447,65 @@ $presences = getPresencesByPeriod($period, $date);
                         <button class="btn btn-primary" onclick="refreshPage()">
                             <i class="fas fa-sync-alt"></i> Actualiser
                         </button>
+                        <?php if ($suspectLieux > 0): ?>
+                            <button class="btn btn-danger" onclick="alertSuspectLieux()">
+                                <i class="fas fa-exclamation-triangle"></i> Signaler anomalies
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
             <?php endif; ?>
         </div>
     </main>
+    
+    <!-- Modal pour ajouter un lieu -->
+    <div id="addLieuModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-map-marker-alt"></i> Ajouter un lieu autorisé</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <form method="POST" id="addLieuForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="nom_lieu"><i class="fas fa-signature"></i> Nom du lieu *</label>
+                        <input type="text" id="nom_lieu" name="nom_lieu" class="form-control" required placeholder="Ex: MNLV Africa Sarl">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="quartier"><i class="fas fa-map"></i> Quartier</label>
+                        <input type="text" id="quartier" name="quartier" class="form-control" placeholder="Ex: Cité des Palmiers">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="ville"><i class="fas fa-city"></i> Ville *</label>
+                        <input type="text" id="ville" name="ville" class="form-control" required placeholder="Ex: Douala" value="Douala">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="pays"><i class="fas fa-globe"></i> Pays</label>
+                        <input type="text" id="pays" name="pays" class="form-control" placeholder="Ex: Cameroun" value="Cameroun">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="rayon_autorise_km"><i class="fas fa-ruler"></i> Rayon autorisé (km)</label>
+                        <input type="number" id="rayon_autorise_km" name="rayon_autorise_km" class="form-control" step="0.01" min="0.01" value="1.00" placeholder="Ex: 1.00">
+                        <small style="color: var(--text-secondary);">Rayon en kilomètres autour duquel le pointage est accepté</small>
+                    </div>
+                    
+                    <input type="hidden" name="ajouter_lieu" value="1">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">
+                        <i class="fas fa-times"></i> Annuler
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check"></i> Ajouter le lieu
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
     
     <script src="js/script.js"></script>
     <script>
@@ -1057,6 +1554,27 @@ $presences = getPresencesByPeriod($period, $date);
             
             // Mettre à jour le compteur initial
             updateVisibleCount(tableRows.length);
+            
+            // Initialiser le bouton de filtre des lieux suspects
+            initializeSuspectFilter();
+            
+            // Fermer la modal en cliquant à l'extérieur
+            const modal = document.getElementById('addLieuModal');
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        closeModal();
+                    }
+                });
+            }
+            
+            // Empêcher la propagation du clic dans le contenu de la modal
+            const modalContent = document.querySelector('.modal-content');
+            if (modalContent) {
+                modalContent.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                });
+            }
         });
         
         // Fonction pour appliquer les styles du thème
@@ -1085,7 +1603,10 @@ $presences = getPresencesByPeriod($period, $date);
                         // Pour les cellules avec lieu-info, on prend le texte complet
                         const lieuInfo = cell.querySelector('.lieu-info');
                         if (lieuInfo) {
-                            rowData.push('"' + lieuInfo.textContent.replace(/"/g, '""') + '"');
+                            let lieuText = lieuInfo.textContent;
+                            // Supprimer "Non autorisé" du texte
+                            lieuText = lieuText.replace('Non autorisé', '').trim();
+                            rowData.push('"' + lieuText.replace(/"/g, '""') + '"');
                         } else {
                             // Nettoyer le texte des icônes
                             let cellText = cell.textContent;
@@ -1133,6 +1654,112 @@ $presences = getPresencesByPeriod($period, $date);
             showNotification('Recherche effacée', 'Tous les filtres de recherche ont été réinitialisés.', 'info');
         }
         
+        // Fonction pour filtrer les lieux suspects
+        let filterSuspectActive = false;
+        
+        function initializeSuspectFilter() {
+            const btn = document.getElementById('filterSuspectBtn');
+            if (!btn) return;
+            
+            // Vérifier s'il y a des lieux suspects
+            const suspectRows = document.querySelectorAll('#presencesTable tbody tr.has-suspect-lieu');
+            if (suspectRows.length === 0) {
+                btn.style.display = 'none';
+            }
+        }
+        
+        function filterSuspectLieux() {
+            const btn = document.getElementById('filterSuspectBtn');
+            const tableRows = document.querySelectorAll('#presencesTable tbody tr');
+            
+            filterSuspectActive = !filterSuspectActive;
+            
+            let visibleCount = 0;
+            
+            tableRows.forEach(row => {
+                if (filterSuspectActive) {
+                    // Montrer uniquement les lignes avec des lieux suspects
+                    if (row.classList.contains('has-suspect-lieu')) {
+                        row.style.display = '';
+                        visibleCount++;
+                    } else {
+                        row.style.display = 'none';
+                    }
+                } else {
+                    // Montrer toutes les lignes
+                    row.style.display = '';
+                    visibleCount++;
+                }
+            });
+            
+            // Mettre à jour le bouton
+            if (filterSuspectActive) {
+                btn.classList.add('active');
+                btn.innerHTML = '<i class="fas fa-times"></i> Tout afficher';
+                showNotification('Filtre activé', 'Affichage des présences avec lieux suspects uniquement.', 'info');
+            } else {
+                btn.classList.remove('active');
+                btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Lieux suspects';
+                showNotification('Filtre désactivé', 'Affichage de toutes les présences.', 'info');
+            }
+            
+            updateVisibleCount(visibleCount);
+        }
+        
+        // Fonction pour alerter sur les lieux suspects
+        function alertSuspectLieux() {
+            const suspectRows = document.querySelectorAll('#presencesTable tbody tr.has-suspect-lieu');
+            if (suspectRows.length === 0) {
+                showNotification('Aucun lieu suspect', 'Tous les lieux de pointage sont autorisés.', 'info');
+                return;
+            }
+            
+            const confirmMessage = `Il y a ${suspectRows.length} présence(s) avec des lieux suspects/non autorisés.\n\nVoulez-vous générer un rapport détaillé ?`;
+            
+            if (confirm(confirmMessage)) {
+                // Générer un rapport des lieux suspects
+                let report = "=== RAPPORT DES LIEUX SUSPECTS ===\n\n";
+                report += `Période: <?php echo $period; ?> - Date: <?php echo $date; ?>\n`;
+                report += `Généré le: ${new Date().toLocaleString()}\n\n`;
+                report += "Liste des présences avec lieux suspects:\n\n";
+                
+                suspectRows.forEach((row, index) => {
+                    const employeeName = row.querySelector('.employee-name').textContent;
+                    const datePresence = row.querySelector('.time-display').textContent;
+                    
+                    report += `${index + 1}. ${employeeName} - ${datePresence}\n`;
+                    
+                    // Récupérer les lieux suspects
+                    const suspectLieux = row.querySelectorAll('.lieu-suspect');
+                    suspectLieux.forEach(lieu => {
+                        const lieuTitle = lieu.previousElementSibling.textContent;
+                        const lieuText = lieu.textContent.replace('Non autorisé', '').trim();
+                        report += `   - ${lieuTitle} ${lieuText}\n`;
+                    });
+                    
+                    report += '\n';
+                });
+                
+                // Créer un blob pour télécharger le rapport
+                const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+                const link = document.createElement('a');
+                const filename = `rapport-lieux-suspects-<?php echo date('Y-m-d', strtotime($date)); ?>.txt`;
+                
+                if (navigator.msSaveBlob) {
+                    navigator.msSaveBlob(blob, filename);
+                } else {
+                    link.href = URL.createObjectURL(blob);
+                    link.download = filename;
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+                
+                showNotification('Rapport généré', 'Le rapport des lieux suspects a été téléchargé.', 'success');
+            }
+        }
+        
         // Fonction pour actualiser la page
         function refreshPage() {
             window.location.reload();
@@ -1145,9 +1772,66 @@ $presences = getPresencesByPeriod($period, $date);
                 const countElement = footer.querySelector('div:first-child');
                 if (countElement) {
                     const period = '<?php echo $period; ?>';
-                    countElement.innerHTML = `<i class="fas fa-info-circle"></i> ${count} présence(s) trouvée(s) pour la période ${period}`;
+                    const suspectText = filterSuspectActive ? ' (lieux suspects uniquement)' : '';
+                    countElement.innerHTML = `<i class="fas fa-info-circle"></i> ${count} présence(s) trouvée(s) pour la période ${period}${suspectText}`;
                 }
             }
+        }
+        
+        // Fonctions pour gérer la modal d'ajout de lieu
+        function openAddLieuModal(lieuText = '') {
+            const modal = document.getElementById('addLieuModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                
+                // Si un texte de lieu est fourni, essayer de l'analyser
+                if (lieuText) {
+                    // Extraire les informations du texte du lieu
+                    // Format typique: "3Q38+W3G, Douala, Cameroon | Quartier: Cite des Palmiers | Ville: Douala"
+                    const nomInput = document.getElementById('nom_lieu');
+                    const quartierInput = document.getElementById('quartier');
+                    const villeInput = document.getElementById('ville');
+                    
+                    // Essayer d'extraire le quartier
+                    const quartierMatch = lieuText.match(/Quartier:\s*([^|]+)/i);
+                    if (quartierMatch) {
+                        quartierInput.value = quartierMatch[1].trim();
+                    }
+                    
+                    // Essayer d'extraire la ville
+                    const villeMatch = lieuText.match(/Ville:\s*([^|]+)/i);
+                    if (villeMatch) {
+                        villeInput.value = villeMatch[1].trim();
+                    } else {
+                        // Essayer de trouver la ville dans le texte
+                        const villes = ['Douala', 'Yaoundé', 'Carrières-sous-Poissy', 'Paris'];
+                        for (const ville of villes) {
+                            if (lieuText.includes(ville)) {
+                                villeInput.value = ville;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Utiliser le début du texte comme nom du lieu
+                    const firstPart = lieuText.split('|')[0];
+                    nomInput.value = firstPart.trim();
+                }
+            }
+        }
+        
+        function closeModal() {
+            const modal = document.getElementById('addLieuModal');
+            if (modal) {
+                modal.style.display = 'none';
+                // Réinitialiser le formulaire
+                document.getElementById('addLieuForm').reset();
+            }
+        }
+        
+        // Fonction pour ajouter un lieu depuis le texte d'un lieu suspect
+        function addLieuFromText(lieuText) {
+            openAddLieuModal(lieuText);
         }
         
         // Fonction pour afficher des notifications
@@ -1272,11 +1956,10 @@ $presences = getPresencesByPeriod($period, $date);
             }
         }
         
-        // Écouter les changements de thème système
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', handleThemeChange);
         
-        // Appliquer le thème auto au chargement
         handleThemeChange();
     </script>
+
 </body>
 </html>
