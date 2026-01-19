@@ -804,7 +804,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         </div>
     </div>
-
+<!-- Test de la clé -->
+<script>
+    console.log("Clé API test: AIzaSyB2D3Vaimk2LMCWPTcPg4NpwnP3rzmNtWM");
+</script>
     <!-- Google Maps API -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBnLfjkd6LA8kbjVnKylz1IoBfleWblrSk&callback=initMap" async defer></script>
     

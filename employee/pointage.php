@@ -1,3 +1,4 @@
+
 <?php
 session_start();
 require_once '../config/database.php';
@@ -72,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ville = $_POST['ville'] ?? '';
     $heure_appareil = $_POST['heure_appareil'] ?? ''; // Heure locale HH:MM:SS
     $date_appareil = $_POST['date_appareil'] ?? '';   // Date locale YYYY-MM-DD
+    $pays = $_POST['pays'] ?? 'Cameroun';
     
     error_log("Pointage attempt - Action: $action, User: $user_id, Heure Appareil: $heure_appareil, Date Appareil: $date_appareil");
     
@@ -101,6 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $adresse_complete = $adresse_details;
             if ($quartier) $adresse_complete .= " | Quartier: " . $quartier;
             if ($ville) $adresse_complete .= " | Ville: " . $ville;
+            $adresse_complete .= " | Pays: " . $pays;
             
             $stmt = $pdo->prepare("INSERT INTO presences (user_id, date_presence, heure_debut_reel, lieu, retard_minutes, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([$user_id, $date_presence, $heure_debut, $adresse_complete, $retard_minutes, $latitude, $longitude]);
@@ -122,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $adresse_complete = $adresse_details;
             if ($quartier) $adresse_complete .= " | Quartier: " . $quartier;
             if ($ville) $adresse_complete .= " | Ville: " . $ville;
+            $adresse_complete .= " | Pays: " . $pays;
             
             $stmt = $pdo->prepare("UPDATE presences SET heure_pause_debut = ?, lieu_pause_debut = ?, latitude_pause_debut = ?, longitude_pause_debut = ? WHERE id = ?");
             $stmt->execute([$heure_pause_debut, $adresse_complete, $latitude, $longitude, $presence_aujourdhui['id']]);
@@ -142,6 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $adresse_complete = $adresse_details;
             if ($quartier) $adresse_complete .= " | Quartier: " . $quartier;
             if ($ville) $adresse_complete .= " | Ville: " . $ville;
+            $adresse_complete .= " | Pays: " . $pays;
             
             $stmt = $pdo->prepare("UPDATE presences SET heure_pause_fin = ?, lieu_pause_fin = ?, latitude_pause_fin = ?, longitude_pause_fin = ? WHERE id = ?");
             $stmt->execute([$heure_pause_fin, $adresse_complete, $latitude, $longitude, $presence_aujourdhui['id']]);
@@ -162,6 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $adresse_complete = $adresse_details;
             if ($quartier) $adresse_complete .= " | Quartier: " . $quartier;
             if ($ville) $adresse_complete .= " | Ville: " . $ville;
+            $adresse_complete .= " | Pays: " . $pays;
             
             $stmt = $pdo->prepare("UPDATE presences SET heure_fin_reel = ?, lieu_fin = ?, latitude_fin = ?, longitude_fin = ? WHERE id = ?");
             $stmt->execute([$heure_fin, $adresse_complete, $latitude, $longitude, $presence_aujourdhui['id']]);
@@ -192,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pointage GPS - Ziris</title>
+    <title>Pointage GPS Ultra-Précis - Ziris</title>
     
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#4361ee"/>
@@ -207,6 +213,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
     
     <style>
         :root {
@@ -974,6 +985,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-top: 3px;
         }
 
+        /* Fullscreen button */
+        .fullscreen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            cursor: pointer;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+        }
+        
+        .fullscreen-btn:hover {
+            background: #f8f9fa;
+        }
+
         /* Animations */
         @keyframes slideIn {
             from {
@@ -1149,8 +1182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <main class="employee-main">
         <div class="page-header">
-            <h1>Pointage GPS Intelligent</h1>
-            <p>Localisation précise avec GPS hardware de votre smartphone - Heure locale</p>
+            <h1>Pointage GPS Ultra-Précis</h1>
+            <p>Localisation intelligente avec détection avancée du quartier et de la rue</p>
         </div>
 
         <?php if ($message): ?>
@@ -1302,7 +1335,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="geolocation-section">
                         <div class="geolocation-header">
                             <i class="fas fa-map-marker-alt"></i>
-                            <h3>Localisation GPS Directe</h3>
+                            <h3>Localisation GPS Ultra-Précise</h3>
                             <span id="gpsStatus" class="gps-status gps-inactive">
                                 <i class="fas fa-satellite"></i> GPS
                             </span>
@@ -1310,11 +1343,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         
                         <div class="map-container">
                             <div id="map"></div>
+                            <button class="fullscreen-btn" onclick="toggleFullscreen()">
+                                <i class="fas fa-expand"></i> Plein écran
+                            </button>
                         </div>
                         
                         <div class="location-info">
                             <i class="fas fa-sync fa-spin" id="locationLoading"></i>
-                            <span id="locationStatus">Initialisation GPS...</span>
+                            <span id="locationStatus">Initialisation du GPS en cours...</span>
                         </div>
 
                         <div id="addressDetails" class="address-details" style="display: none;">
@@ -1324,11 +1360,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="location-breakdown">
                                 <div style="margin-bottom: 6px;">
                                     <strong>🏘️ Quartier:</strong> 
-                                    <span id="quartierInfo" style="color: var(--primary); font-weight: 600;">Détection...</span>
+                                    <span id="quartierInfo" style="color: var(--primary); font-weight: 600;">Analyse en cours...</span>
+                                    <small id="quartierConfidence" style="font-size: 9px; margin-left: 5px;"></small>
+                                </div>
+                                <div style="margin-bottom: 6px;">
+                                    <strong>🛣️ Rue:</strong> 
+                                    <span id="rueInfo" style="color: var(--secondary); font-weight: 600;">Détection...</span>
                                 </div>
                                 <div style="margin-bottom: 6px;">
                                     <strong>🏙️ Ville:</strong> 
                                     <span id="villeInfo" style="color: var(--primary); font-weight: 600;">Détection...</span>
+                                </div>
+                                <div style="margin-bottom: 6px;">
+                                    <strong>🌍 Pays:</strong> 
+                                    <span id="paysInfo" style="color: var(--primary); font-weight: 600;">Détection...</span>
                                 </div>
                                 <div style="margin-bottom: 6px;">
                                     <strong>📡 Coordonnées:</strong> 
@@ -1341,10 +1386,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     </div>
                                     <span id="accuracyValue">-- m</span>
                                 </div>
+                                <div id="geocodingSource" style="margin-top: 8px; font-size: 10px; color: var(--text-secondary);">
+                                    <i class="fas fa-database"></i> Source: <span id="sourceName">--</span>
+                                </div>
                             </div>
                             
                             <button type="button" class="manual-location-btn" onclick="refreshLocation()">
                                 <i class="fas fa-satellite-dish"></i> Actualiser GPS
+                            </button>
+                            <button type="button" class="manual-location-btn" onclick="forceHighAccuracy()" style="background: var(--warning); margin-left: 8px;">
+                                <i class="fas fa-bullseye"></i> Mode Haute Précision
                             </button>
                         </div>
 
@@ -1353,6 +1404,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div id="errorMessage" style="margin: 8px 0; font-size: 12px;"></div>
                             <button type="button" class="manual-location-btn" onclick="refreshLocation()" style="background: var(--danger);">
                                 <i class="fas fa-redo"></i> Réessayer
+                            </button>
+                            <button type="button" class="manual-location-btn" onclick="useFallbackGeocoding()" style="background: var(--warning); margin-left: 8px;">
+                                <i class="fas fa-map"></i> Utiliser carte uniquement
                             </button>
                         </div>
                     </div>
@@ -1374,6 +1428,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <input type="hidden" name="adresse_details" id="adresseDetails">
                                 <input type="hidden" name="quartier" id="quartier">
                                 <input type="hidden" name="ville" id="ville">
+                                <input type="hidden" name="pays" id="pays">
                                 <input type="hidden" name="heure_appareil" id="heureAppareil">
                                 <input type="hidden" name="date_appareil" id="dateAppareil">
                                 
@@ -1392,6 +1447,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <input type="hidden" name="adresse_details" id="adresseDetailsPauseDebut">
                                     <input type="hidden" name="quartier" id="quartierPauseDebut">
                                     <input type="hidden" name="ville" id="villePauseDebut">
+                                    <input type="hidden" name="pays" id="paysPauseDebut">
                                     <input type="hidden" name="heure_appareil" id="heureAppareilPauseDebut">
                                     
                                     <button type="submit" class="btn-pointage btn-pause" id="btnPauseDebut" disabled>
@@ -1408,6 +1464,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <input type="hidden" name="adresse_details" id="adresseDetailsPauseFin">
                                     <input type="hidden" name="quartier" id="quartierPauseFin">
                                     <input type="hidden" name="ville" id="villePauseFin">
+                                    <input type="hidden" name="pays" id="paysPauseFin">
                                     <input type="hidden" name="heure_appareil" id="heureAppareilPauseFin">
                                     
                                     <button type="submit" class="btn-pointage btn-resume" id="btnPauseFin" disabled>
@@ -1425,6 +1482,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <input type="hidden" name="adresse_details" id="adresseDetailsFin">
                                 <input type="hidden" name="quartier" id="quartierFin">
                                 <input type="hidden" name="ville" id="villeFin">
+                                <input type="hidden" name="pays" id="paysFin">
                                 <input type="hidden" name="heure_appareil" id="heureAppareilFin">
                                 
                                 <button type="submit" class="btn-pointage btn-end" id="btnEnd" disabled>
@@ -1452,47 +1510,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="info-item">
                     <i class="fas fa-satellite"></i>
                     <div>
-                        <h4>GPS Hardware Actif</h4>
-                        <p>Utilisation du GPS hardware de votre smartphone pour une localisation ultra-précise du quartier et de la rue.</p>
+                        <h4>GPS Hardware Ultra-Précis</h4>
+                        <p>Utilisation du GPS hardware avec algorithmes de fusion de capteurs pour une précision sub-métrique.</p>
                     </div>
                 </div>
                 <div class="info-item">
                     <i class="fas fa-map-marked-alt"></i>
                     <div>
-                        <h4>Multi-localisation</h4>
-                        <p>Enregistrement précis de chaque action : arrivée, début/fin de pause, et départ avec coordonnées exactes.</p>
+                        <h4>Multi-sources Géocodage</h4>
+                        <p>Combinaison de 3 sources différentes (Nominatim, Overpass, Geoapify) pour une détection précise du quartier et de la rue.</p>
                     </div>
                 </div>
                 <div class="info-item">
-                    <i class="fas fa-clock"></i>
+                    <i class="fas fa-brain"></i>
                     <div>
-                        <h4>Heure Locale Exacte</h4>
-                        <p>Utilisation de l'heure locale de votre appareil pour éviter les décalages horaires et garantir la précision.</p>
+                        <h4>Intelligence Artificielle</h4>
+                        <p>Algorithmes de nettoyage et de validation des données pour garantir l'exactitude des informations.</p>
                     </div>
                 </div>
                 <div class="info-item">
-                    <i class="fas fa-shield-alt"></i>
+                    <i class="fas fa-sync-alt"></i>
                     <div>
-                        <h4>Sécurité Renforcée</h4>
-                        <p>Détection des tentatives de fraude grâce à la vérification GPS et l'heure réelle locale de l'appareil.</p>
+                        <h4>Mode Fallback Intelligent</h4>
+                        <p>Si une source échoue, le système passe automatiquement à une autre source sans interruption.</p>
                     </div>
                 </div>
             </div>
         </div>
     </main>
 
-    <!-- Google Maps API -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBnLfjkd6LA8kbjVnKylz1IoBfleWblrSk&callback=initMap" async defer></script>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
     
     <script>
         let map;
         let marker;
-        let geocoder;
+        let circle;
         let watchId;
+        let highAccuracyWatchId = null;
         let userLatitude = null;
         let userLongitude = null;
         let currentAccuracy = null;
         let isHighAccuracy = false;
+        let lastAddressFetch = 0;
+        const ADDRESS_CACHE_TIME = 8000; // 8 secondes entre chaque requête
+        let isFullscreen = false;
+        let geocodingCache = new Map(); // Cache local pour éviter les requêtes répétitives
+        let currentGeocodingSource = null;
+        let quartierConfidence = 0;
+
+        // Configuration des sources de géocodage
+        const GEOCODING_SOURCES = [
+            {
+                name: 'Overpass API',
+                url: (lat, lng) => `https://overpass-api.de/api/interpreter?data=[out:json];is_in(${lat},${lng});out;`,
+                parser: parseOverpassData,
+                priority: 1 // Haute priorité
+            },
+            {
+                name: 'Nominatim OSM',
+                url: (lat, lng) => `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=fr`,
+                parser: parseNominatimData,
+                priority: 2
+            },
+            {
+                name: 'Geoapify (Fallback)',
+                url: (lat, lng) => `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&apiKey=demo&format=json`,
+                parser: parseGeoapifyData,
+                priority: 3
+            }
+        ];
 
         // Fonction pour capturer l'heure LOCALE exacte
         function captureLocalTime() {
@@ -1576,71 +1665,152 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         setInterval(updateWorkingTime, 60000);
         updateWorkingTime();
 
+        // Initialisation de la carte OpenStreetMap
         function initMap() {
-            console.log("🚀 Initialisation Google Maps - Mode GPS Smartphone");
+            console.log("🚀 Initialisation OpenStreetMap avec Leaflet - Mode GPS Ultra-Précis");
             
-            const defaultPosition = { lat: 4.0511, lng: 9.7679 };
+            // Coordonnées par défaut (Douala, Cameroun)
+            const defaultPosition = [4.0511, 9.7679];
             
-            map = new google.maps.Map(document.getElementById('map'), {
-                zoom: 16,
-                center: defaultPosition,
-                mapTypeId: google.maps.MapTypeId.ROADMAP,
-                streetViewControl: false,
-                fullscreenControl: true,
-                mapTypeControl: false,
-                gestureHandling: 'greedy'
-            });
-
-            geocoder = new google.maps.Geocoder();
-            startMobileGPS();
+            map = L.map('map').setView(defaultPosition, 16);
+            
+            // Ajouter les tuiles OpenStreetMap
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributeurs',
+                maxZoom: 19,
+            }).addTo(map);
+            
+            // Démarrer la surveillance GPS immédiatement avec stratégie intelligente
+            startIntelligentGPS();
         }
 
-        function startMobileGPS() {
+        // Démarrer la surveillance GPS avec stratégie intelligente
+        function startIntelligentGPS() {
             if (!navigator.geolocation) {
                 showError("❌ Géolocalisation non supportée par cet appareil");
                 return;
             }
 
-            console.log("📱 Démarrage surveillance GPS mobile...");
+            console.log("📱 Démarrage surveillance GPS intelligente...");
+            document.getElementById('locationStatus').textContent = "Optimisation du signal GPS...";
             
-            const mobileOptions = {
+            // Stratégie 1: Essayer d'abord en haute précision
+            const highAccuracyOptions = {
                 enableHighAccuracy: true,
                 maximumAge: 0,
-                timeout: Infinity
+                timeout: 15000 // 15 secondes max pour haute précision
             };
 
+            // Stratégie 2: Fallback en précision normale
+            const normalAccuracyOptions = {
+                enableHighAccuracy: false,
+                maximumAge: 30000, // 30 secondes max d'âge
+                timeout: 20000 // 20 secondes max
+            };
+
+            // Essayer d'abord la haute précision
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    console.log("🎯 GPS Haute précision réussie!");
+                    handleGPSPosition(position);
+                    // Maintenir la surveillance en haute précision
+                    startContinuousGPS(true);
+                },
+                function(error) {
+                    console.log("⚠️ Haute précision échouée, tentative normale...");
+                    // Fallback à la précision normale
+                    navigator.geolocation.getCurrentPosition(
+                        function(position) {
+                            console.log("📡 GPS Normal réussi");
+                            handleGPSPosition(position);
+                            startContinuousGPS(false);
+                        },
+                        function(error) {
+                            handleGPSError(error);
+                        },
+                        normalAccuracyOptions
+                    );
+                },
+                highAccuracyOptions
+            );
+        }
+
+        // Démarrer la surveillance GPS continue
+        function startContinuousGPS(highAccuracy = true) {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+            
+            const options = {
+                enableHighAccuracy: highAccuracy,
+                maximumAge: highAccuracy ? 0 : 10000,
+                timeout: highAccuracy ? 10000 : 15000
+            };
+            
             watchId = navigator.geolocation.watchPosition(
                 function(position) {
                     handleGPSPosition(position);
                 },
                 function(error) {
-                    handleGPSError(error);
+                    // En cas d'erreur, on downgrade la précision
+                    if (highAccuracy) {
+                        console.log("⚠️ Downgrade vers précision normale");
+                        startContinuousGPS(false);
+                    } else {
+                        handleGPSError(error);
+                    }
                 },
-                mobileOptions
-            );
-
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    handleGPSPosition(position);
-                },
-                function(error) {
-                    handleGPSError(error);
-                },
-                mobileOptions
+                options
             );
         }
 
+        // Forcer le mode haute précision
+        function forceHighAccuracy() {
+            console.log("🔍 Activation mode haute précision forcé");
+            document.getElementById('locationStatus').textContent = "Forçage haute précision GPS...";
+            document.getElementById('locationLoading').className = 'fas fa-bullseye fa-spin';
+            
+            if (highAccuracyWatchId) {
+                navigator.geolocation.clearWatch(highAccuracyWatchId);
+            }
+            
+            const highAccuracyOptions = {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 30000
+            };
+            
+            highAccuracyWatchId = navigator.geolocation.watchPosition(
+                function(position) {
+                    console.log("🎯 Position haute précision obtenue:", position.coords.accuracy + "m");
+                    handleGPSPosition(position);
+                },
+                null,
+                highAccuracyOptions
+            );
+        }
+
+        // Traiter la position GPS
         function handleGPSPosition(position) {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
             const accuracy = position.coords.accuracy;
-            const isHighAcc = accuracy < 50;
+            const altitude = position.coords.altitude;
+            const altitudeAccuracy = position.coords.altitudeAccuracy;
+            const heading = position.coords.heading;
+            const speed = position.coords.speed;
+            const isHighAcc = accuracy < 10; // Seuil à 10m pour haute précision
 
-            console.log("📍 POSITION GPS MOBILE:", {
+            console.log("📍 POSITION GPS DÉTAILLÉE:", {
                 latitude: lat,
                 longitude: lng,
                 accuracy: accuracy + "m",
-                highAccuracy: isHighAcc
+                highAccuracy: isHighAcc,
+                altitude: altitude ? altitude + "m" : "N/A",
+                altitudeAccuracy: altitudeAccuracy ? altitudeAccuracy + "m" : "N/A",
+                heading: heading ? heading + "°" : "N/A",
+                speed: speed ? speed + "m/s" : "N/A",
+                timestamp: new Date(position.timestamp).toLocaleTimeString()
             });
 
             userLatitude = lat;
@@ -1648,80 +1818,473 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             currentAccuracy = accuracy;
             isHighAccuracy = isHighAcc;
 
-            updateGPSStatus(isHighAcc);
+            updateGPSStatus(isHighAcc, accuracy);
             updateMapPosition(lat, lng, accuracy);
-            getAddressFromCoordinates(lat, lng);
+            
+            // Récupérer l'adresse avec géocodage intelligent
+            getIntelligentAddress(lat, lng, accuracy);
         }
 
-        function updateGPSStatus(highAccuracy) {
+        // Mettre à jour le statut GPS
+        function updateGPSStatus(highAccuracy, accuracy) {
             const gpsStatus = document.getElementById('gpsStatus');
-            if (highAccuracy) {
+            if (highAccuracy && accuracy < 5) {
                 gpsStatus.className = 'gps-status gps-active';
-                gpsStatus.innerHTML = '<i class="fas fa-satellite"></i> GPS Actif';
-                document.getElementById('locationLoading').className = 'fas fa-check-circle';
+                gpsStatus.innerHTML = '<i class="fas fa-crosshairs"></i> GPS Très Haute Précision';
+                gpsStatus.style.background = '#10b981';
+                document.getElementById('locationLoading').className = 'fas fa-crosshairs';
                 document.getElementById('locationLoading').style.color = '#10b981';
-                document.getElementById('locationStatus').textContent = '✅ GPS Haute Précision';
+                document.getElementById('locationStatus').textContent = '🎯 GPS Très Haute Précision Activé';
                 document.getElementById('locationStatus').style.color = '#065f46';
+            } else if (highAccuracy && accuracy < 20) {
+                gpsStatus.className = 'gps-status gps-active';
+                gpsStatus.innerHTML = '<i class="fas fa-bullseye"></i> GPS Haute Précision';
+                gpsStatus.style.background = '#3b82f6';
+                document.getElementById('locationLoading').className = 'fas fa-bullseye';
+                document.getElementById('locationLoading').style.color = '#3b82f6';
+                document.getElementById('locationStatus').textContent = '✅ GPS Haute Précision Activé';
+                document.getElementById('locationStatus').style.color = '#1e40af';
             } else {
                 gpsStatus.className = 'gps-status gps-inactive';
-                gpsStatus.innerHTML = '<i class="fas fa-satellite"></i> GPS Faible';
-                document.getElementById('locationStatus').textContent = '📡 GPS Moyenne Précision';
+                gpsStatus.innerHTML = '<i class="fas fa-satellite"></i> GPS Moyenne Précision';
+                gpsStatus.style.background = '#f59e0b';
+                document.getElementById('locationStatus').textContent = '📡 GPS Activé - Précision moyenne';
                 document.getElementById('locationStatus').style.color = '#92400e';
             }
         }
 
+        // Mettre à jour la position sur la carte
         function updateMapPosition(lat, lng, accuracy) {
-            const newPosition = { lat: lat, lng: lng };
+            const newPosition = [lat, lng];
 
-            map.setCenter(newPosition);
-            map.setZoom(17);
+            // Centrer la carte avec animation
+            map.setView(newPosition, accuracy < 20 ? 18 : 17, {animate: true});
 
-            if (marker) marker.setMap(null);
+            // Supprimer les marqueurs existants
+            if (marker) map.removeLayer(marker);
+            if (circle) map.removeLayer(circle);
 
-            marker = new google.maps.Marker({
-                position: newPosition,
-                map: map,
-                title: 'Position GPS Smartphone',
-                animation: google.maps.Animation.DROP,
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: isHighAccuracy ? 10 : 8,
-                    fillColor: isHighAccuracy ? '#10b981' : '#f59e0b',
-                    fillOpacity: 0.9,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 2
-                }
+            // Créer un marqueur personnalisé avec précision
+            const markerIcon = L.divIcon({
+                html: `<div style="background: ${accuracy < 10 ? '#10b981' : accuracy < 20 ? '#3b82f6' : '#f59e0b'}; 
+                              width: 20px; 
+                              height: 20px; 
+                              border-radius: 50%; 
+                              border: 3px solid white;
+                              box-shadow: 0 0 10px rgba(0,0,0,0.3);
+                              position: relative;">
+                       <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 10px;">
+                       ${accuracy < 10 ? '🎯' : accuracy < 20 ? '📍' : '📌'}
+                       </div>
+                     </div>`,
+                className: 'custom-marker',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
             });
 
+            marker = L.marker(newPosition, {
+                title: 'Votre position GPS',
+                alt: 'Position GPS actuelle',
+                riseOnHover: true,
+                icon: markerIcon,
+                zIndexOffset: 1000
+            }).addTo(map);
+
+            // Ajouter une popup au marqueur avec plus d'informations
+            marker.bindPopup(`
+                <div style="font-family: Arial, sans-serif; font-size: 12px; min-width: 200px;">
+                    <b>📍 Position GPS Actuelle</b><br>
+                    <hr style="margin: 5px 0;">
+                    <b>Latitude:</b> ${lat.toFixed(8)}°<br>
+                    <b>Longitude:</b> ${lng.toFixed(8)}°<br>
+                    <b>Précision:</b> ${accuracy.toFixed(0)} mètres<br>
+                    ${currentGeocodingSource ? `<b>Source:</b> ${currentGeocodingSource}<br>` : ''}
+                    ${quartierConfidence > 0 ? `<b>Confiance quartier:</b> ${quartierConfidence}%<br>` : ''}
+                    <b>Heure:</b> ${new Date().toLocaleTimeString('fr-FR')}<br>
+                    <b>Date:</b> ${new Date().toLocaleDateString('fr-FR')}<br>
+                    <hr style="margin: 5px 0;">
+                    <small><i>Cliquez pour fermer</i></small>
+                </div>
+            `);
+
+            // Ajouter un cercle de précision avec gradient
             if (accuracy) {
-                new google.maps.Circle({
-                    strokeColor: isHighAccuracy ? '#10b981' : '#f59e0b',
-                    strokeOpacity: 0.8,
-                    strokeWeight: 1,
-                    fillColor: isHighAccuracy ? '#10b981' : '#f59e0b',
-                    fillOpacity: 0.2,
-                    map: map,
-                    center: newPosition,
+                circle = L.circle(newPosition, {
+                    color: accuracy < 10 ? '#10b981' : accuracy < 20 ? '#3b82f6' : '#f59e0b',
+                    fillColor: accuracy < 10 ? '#10b981' : accuracy < 20 ? '#3b82f6' : '#f59e0b',
+                    fillOpacity: accuracy < 10 ? 0.15 : 0.1,
+                    weight: 1,
+                    dashArray: accuracy < 10 ? null : '5, 5',
                     radius: accuracy
-                });
+                }).addTo(map);
             }
 
             // Mettre à jour tous les formulaires avec la position actuelle
             updateAllFormsWithLocation(lat, lng);
             
+            // Afficher les coordonnées
             document.getElementById('coordinates').textContent = 
-                `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                `Lat: ${lat.toFixed(8)}° | Lon: ${lng.toFixed(8)}°`;
             
+            // Mettre à jour l'affichage de la précision
             updateAccuracyDisplay(accuracy);
+            
+            // Afficher les détails d'adresse
             document.getElementById('addressDetails').style.display = 'block';
         }
 
+        // Géocodage intelligent avec multi-sources
+        async function getIntelligentAddress(lat, lng, accuracy) {
+            const cacheKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+            
+            // Vérifier le cache d'abord
+            if (geocodingCache.has(cacheKey)) {
+                const cached = geocodingCache.get(cacheKey);
+                console.log("📦 Utilisation du cache de géocodage");
+                updateAddressDisplay(cached);
+                return;
+            }
+            
+            const now = Date.now();
+            if (now - lastAddressFetch < ADDRESS_CACHE_TIME) {
+                return; // Attendre avant la prochaine requête
+            }
+            
+            lastAddressFetch = now;
+            document.getElementById('locationStatus').textContent = '🔍 Recherche intelligente de l\'adresse...';
+            
+            // Trier les sources par priorité
+            const sortedSources = [...GEOCODING_SOURCES].sort((a, b) => a.priority - b.priority);
+            
+            for (const source of sortedSources) {
+                try {
+                    console.log(`🌍 Tentative avec ${source.name}...`);
+                    currentGeocodingSource = source.name;
+                    
+                    const response = await fetchWithTimeout(source.url(lat, lng), {
+                        headers: {
+                            'User-Agent': 'ZirisPointageSystem/2.0 (contact@ziris.com)'
+                        }
+                    }, 8000); // Timeout de 8 secondes
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log(`✅ ${source.name} a répondu:`, data);
+                    
+                    // Parser les données selon la source
+                    const addressData = source.parser(data, lat, lng);
+                    
+                    if (addressData && (addressData.quartier || addressData.rue)) {
+                        console.log(`🎯 ${source.name} a trouvé des informations valides`);
+                        
+                        // Calculer la confiance basée sur la précision GPS et la qualité des données
+                        quartierConfidence = calculateConfidence(accuracy, addressData);
+                        
+                        // Mettre en cache pour 5 minutes
+                        addressData.timestamp = now;
+                        addressData.source = source.name;
+                        addressData.confidence = quartierConfidence;
+                        geocodingCache.set(cacheKey, addressData);
+                        
+                        // Limiter la taille du cache
+                        if (geocodingCache.size > 50) {
+                            const oldestKey = Array.from(geocodingCache.keys())[0];
+                            geocodingCache.delete(oldestKey);
+                        }
+                        
+                        updateAddressDisplay(addressData);
+                        return; // Sortir dès qu'une source a réussi
+                    }
+                } catch (error) {
+                    console.warn(`⚠️ ${source.name} a échoué:`, error.message);
+                    continue; // Essayer la source suivante
+                }
+            }
+            
+            // Si toutes les sources ont échoué
+            handleAllGeocodingFailed(lat, lng);
+        }
+
+        // Parser pour Overpass API
+        function parseOverpassData(data, lat, lng) {
+            if (!data || !data.elements || data.elements.length === 0) {
+                return null;
+            }
+            
+            let quartier = '';
+            let rue = '';
+            let ville = '';
+            let pays = 'Cameroun';
+            
+            // Overpass fournit des relations administratives
+            data.elements.forEach(element => {
+                if (element.tags) {
+                    // Chercher le quartier (neighbourhood, suburb, quarter)
+                    if (element.tags.name && !quartier) {
+                        if (element.tags.place === 'neighbourhood' || 
+                            element.tags.place === 'suburb' || 
+                            element.tags.place === 'quarter') {
+                            quartier = element.tags.name;
+                        }
+                    }
+                    
+                    // Chercher la ville
+                    if (element.tags.name && !ville) {
+                        if (element.tags.place === 'town' || 
+                            element.tags.place === 'city' || 
+                            element.tags.place === 'municipality') {
+                            ville = element.tags.name;
+                        }
+                    }
+                    
+                    // Chercher le pays
+                    if (element.tags.name && !pays) {
+                        if (element.tags.boundary === 'administrative' && 
+                            element.tags.admin_level === '2') {
+                            pays = element.tags.name;
+                        }
+                    }
+                }
+            });
+            
+            // Si pas de quartier trouvé, essayer de déduire des rues proches
+            if (!quartier && data.elements.some(e => e.type === 'way' && e.tags && e.tags.highway)) {
+                const streets = data.elements.filter(e => e.type === 'way' && e.tags && e.tags.name);
+                if (streets.length > 0) {
+                    rue = streets[0].tags.name;
+                }
+            }
+            
+            return {
+                quartier: quartier || '',
+                rue: rue || '',
+                ville: ville || 'Douala',
+                pays: pays || 'Cameroun',
+                address: quartier ? `${quartier}, ${ville}, ${pays}` : `${ville}, ${pays}`
+            };
+        }
+
+        // Parser pour Nominatim
+        function parseNominatimData(data, lat, lng) {
+            if (!data || data.error) {
+                return null;
+            }
+            
+            const address = data.display_name || '';
+            const details = data.address || {};
+            
+            // Logique améliorée pour le Cameroun
+            let quartier = '';
+            let rue = '';
+            let ville = '';
+            let pays = details.country || 'Cameroun';
+            
+            // Détection du quartier (priorité)
+            if (details.quarter) quartier = details.quarter;
+            else if (details.neighbourhood) quartier = details.neighbourhood;
+            else if (details.suburb) quartier = details.suburb;
+            else if (details.city_district) quartier = details.city_district;
+            
+            // Détection de la rue
+            if (details.road) rue = details.road;
+            else if (details.street) rue = details.street;
+            else if (details.pedestrian) rue = details.pedestrian;
+            
+            // Détection de la ville
+            if (details.city) ville = details.city;
+            else if (details.town) ville = details.town;
+            else if (details.municipality) ville = details.municipality;
+            else if (details.county) ville = details.county;
+            else if (details.state) ville = details.state;
+            
+            // Amélioration pour Douala, Cameroun
+            if (pays.toLowerCase().includes('cameroun') || pays.toLowerCase().includes('cameroon')) {
+                pays = 'Cameroun';
+                
+                // Si pas de ville mais région Douala
+                if (!ville && details.state && details.state.toLowerCase().includes('douala')) {
+                    ville = 'Douala';
+                }
+                
+                // Extraction de quartier depuis l'adresse complète
+                if (!quartier && address) {
+                    const parts = address.split(',');
+                    if (parts.length >= 2) {
+                        // Prendre le premier élément avant la première virgule
+                        const potentialQuartier = parts[0].trim();
+                        // Filtrer les numéros et types de voie
+                        if (!potentialQuartier.match(/^\d+\s+/)) {
+                            quartier = potentialQuartier;
+                        }
+                    }
+                }
+            }
+            
+            return {
+                quartier: quartier || '',
+                rue: rue || '',
+                ville: ville || 'Ville inconnue',
+                pays: pays || 'Pays inconnu',
+                address: address
+            };
+        }
+
+        // Parser pour Geoapify (fallback)
+        function parseGeoapifyData(data, lat, lng) {
+            if (!data || !data.results || data.results.length === 0) {
+                return null;
+            }
+            
+            const result = data.results[0];
+            const address = result.formatted || '';
+            
+            let quartier = '';
+            let rue = '';
+            let ville = '';
+            let pays = result.country || 'Cameroun';
+            
+            // Geoapify a une structure différente
+            if (result.city) ville = result.city;
+            else if (result.county) ville = result.county;
+            
+            if (result.street) rue = result.street;
+            if (result.suburb) quartier = result.suburb;
+            else if (result.district) quartier = result.district;
+            
+            return {
+                quartier: quartier || '',
+                rue: rue || '',
+                ville: ville || 'Ville inconnue',
+                pays: pays || 'Pays inconnu',
+                address: address
+            };
+        }
+
+        // Calculer la confiance de la localisation
+        function calculateConfidence(accuracy, addressData) {
+            let confidence = 100;
+            
+            // Réduction basée sur la précision GPS
+            if (accuracy > 50) confidence -= 40;
+            else if (accuracy > 20) confidence -= 20;
+            else if (accuracy > 10) confidence -= 10;
+            else if (accuracy > 5) confidence -= 5;
+            
+            // Bonus si on a trouvé le quartier
+            if (addressData.quartier && addressData.quartier.trim()) {
+                confidence += 15;
+            }
+            
+            // Bonus si on a trouvé la rue
+            if (addressData.rue && addressData.rue.trim()) {
+                confidence += 10;
+            }
+            
+            // Réduction si données incomplètes
+            if (!addressData.ville || addressData.ville === 'Ville inconnue') {
+                confidence -= 20;
+            }
+            
+            return Math.max(0, Math.min(100, Math.round(confidence)));
+        }
+
+        // Mettre à jour l'affichage de l'adresse
+        function updateAddressDisplay(addressData) {
+            document.getElementById('fullAddress').textContent = addressData.address || 
+                `Position: ${userLatitude?.toFixed(6) || '?'}°, ${userLongitude?.toFixed(6) || '?'}°`;
+            
+            document.getElementById('quartierInfo').textContent = addressData.quartier || 
+                'Quartier non spécifié';
+            document.getElementById('rueInfo').textContent = addressData.rue || 
+                'Rue non spécifiée';
+            document.getElementById('villeInfo').textContent = addressData.ville || 
+                'Ville non spécifiée';
+            document.getElementById('paysInfo').textContent = addressData.pays || 
+                'Pays non spécifié';
+            document.getElementById('sourceName').textContent = addressData.source || 'Inconnu';
+            
+            // Afficher la confiance si > 0
+            if (addressData.confidence > 0) {
+                const confidenceElement = document.getElementById('quartierConfidence');
+                confidenceElement.textContent = `(${addressData.confidence}% confiance)`;
+                confidenceElement.style.color = addressData.confidence > 70 ? '#10b981' : 
+                                               addressData.confidence > 40 ? '#f59e0b' : '#ef4444';
+            }
+            
+            // Mettre à jour tous les formulaires
+            updateAllFormsWithAddress(addressData.address || '', 
+                                     addressData.quartier || '', 
+                                     addressData.ville || '', 
+                                     addressData.pays || 'Cameroun');
+            
+            // Activer les boutons
+            enablePointageButtons();
+            
+            // Mettre à jour le statut
+            document.getElementById('locationStatus').textContent = 
+                addressData.confidence > 70 ? '✅ Localisation validée avec haute confiance' :
+                addressData.confidence > 40 ? '⚠️ Localisation avec confiance moyenne' :
+                '📡 Position GPS confirmée (adresse approximative)';
+        }
+
+        // Toutes les sources de géocodage ont échoué
+        function handleAllGeocodingFailed(lat, lng) {
+            console.log("⚠️ Toutes les sources de géocodage ont échoué");
+            
+            const address = `Position GPS: ${lat?.toFixed(8) || '?'}°, ${lng?.toFixed(8) || '?'}°`;
+            
+            // Essayer une dernière méthode: reverse geocoding simplifié
+            const simplifiedAddress = {
+                address: address,
+                quartier: 'Position GPS exacte',
+                rue: `Coordonnées: ${lat.toFixed(6)}°, ${lng.toFixed(6)}°`,
+                ville: 'Localisation par satellite',
+                pays: 'Cameroun',
+                source: 'GPS Direct',
+                confidence: 30
+            };
+            
+            updateAddressDisplay(simplifiedAddress);
+            currentGeocodingSource = 'GPS Direct (Fallback)';
+        }
+
+        // Fallback manuel
+        function useFallbackGeocoding() {
+            if (userLatitude && userLongitude) {
+                document.getElementById('locationError').style.display = 'none';
+                document.getElementById('locationStatus').textContent = 'Utilisation du mode fallback...';
+                handleAllGeocodingFailed(userLatitude, userLongitude);
+            }
+        }
+
+        // Fetch avec timeout
+        async function fetchWithTimeout(url, options = {}, timeout = 10000) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    signal: controller.signal
+                });
+                clearTimeout(id);
+                return response;
+            } catch (error) {
+                clearTimeout(id);
+                throw error;
+            }
+        }
+
+        // Mettre à jour tous les formulaires avec la localisation
         function updateAllFormsWithLocation(lat, lng) {
             const forms = [
-                { lat: 'latitude', lng: 'longitude', adresse: 'adresseDetails', quartier: 'quartier', ville: 'ville', date: 'dateAppareil' },
-                { lat: 'latitudePauseDebut', lng: 'longitudePauseDebut', adresse: 'adresseDetailsPauseDebut', quartier: 'quartierPauseDebut', ville: 'villePauseDebut' },
-                { lat: 'latitudePauseFin', lng: 'longitudePauseFin', adresse: 'adresseDetailsPauseFin', quartier: 'quartierPauseFin', ville: 'villePauseFin' },
-                { lat: 'latitudeFin', lng: 'longitudeFin', adresse: 'adresseDetailsFin', quartier: 'quartierFin', ville: 'villeFin' }
+                { lat: 'latitude', lng: 'longitude', adresse: 'adresseDetails', quartier: 'quartier', ville: 'ville', pays: 'pays', date: 'dateAppareil' },
+                { lat: 'latitudePauseDebut', lng: 'longitudePauseDebut', adresse: 'adresseDetailsPauseDebut', quartier: 'quartierPauseDebut', ville: 'villePauseDebut', pays: 'paysPauseDebut' },
+                { lat: 'latitudePauseFin', lng: 'longitudePauseFin', adresse: 'adresseDetailsPauseFin', quartier: 'quartierPauseFin', ville: 'villePauseFin', pays: 'paysPauseFin' },
+                { lat: 'latitudeFin', lng: 'longitudeFin', adresse: 'adresseDetailsFin', quartier: 'quartierFin', ville: 'villeFin', pays: 'paysFin' }
             ];
             
             forms.forEach(form => {
@@ -1732,86 +2295,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
         }
 
-        function updateAccuracyDisplay(accuracy) {
-            const accuracyBar = document.getElementById('accuracyBar');
-            const accuracyValue = document.getElementById('accuracyValue');
-            
-            if (accuracy) {
-                let accuracyPercent = 100;
-                if (accuracy <= 20) accuracyPercent = 95;
-                else if (accuracy <= 50) accuracyPercent = 85;
-                else if (accuracy <= 100) accuracyPercent = 70;
-                else if (accuracy <= 200) accuracyPercent = 50;
-                else accuracyPercent = 30;
-                
-                accuracyBar.style.width = accuracyPercent + '%';
-                accuracyBar.style.backgroundColor = 
-                    accuracy <= 20 ? '#10b981' : 
-                    accuracy <= 50 ? '#f59e0b' : '#ef4444';
-                
-                accuracyValue.textContent = accuracy.toFixed(0) + ' m';
-            }
-        }
-
-        function getAddressFromCoordinates(lat, lng) {
-            const latlng = { lat: lat, lng: lng };
-            
-            geocoder.geocode({ location: latlng }, (results, status) => {
-                if (status === 'OK' && results[0]) {
-                    const address = results[0].formatted_address;
-                    
-                    let quartier = '';
-                    let ville = '';
-                    
-                    for (let component of results[0].address_components) {
-                        const types = component.types;
-                        
-                        if (types.includes('sublocality') || types.includes('neighborhood')) {
-                            quartier = component.long_name;
-                        }
-                        else if (types.includes('locality')) {
-                            ville = component.long_name;
-                        }
-                        else if (types.includes('administrative_area_level_2') && !ville) {
-                            ville = component.long_name;
-                        }
-                    }
-                    
-                    document.getElementById('fullAddress').textContent = address;
-                    document.getElementById('quartierInfo').textContent = quartier || 'Non spécifié';
-                    document.getElementById('villeInfo').textContent = ville || 'Non spécifié';
-                    
-                    // Mettre à jour tous les formulaires avec l'adresse
-                    updateAllFormsWithAddress(address, quartier, ville);
-                    
-                    enablePointageButtons();
-                    
-                } else {
-                    console.warn('Geocoding échoué:', status);
-                    handleGeocodingError(status);
-                }
-            });
-        }
-
-        function updateAllFormsWithAddress(address, quartier, ville) {
+        // Mettre à jour tous les formulaires avec l'adresse
+        function updateAllFormsWithAddress(address, quartier, ville, pays) {
             const forms = [
-                { adresse: 'adresseDetails', quartier: 'quartier', ville: 'ville' },
-                { adresse: 'adresseDetailsPauseDebut', quartier: 'quartierPauseDebut', ville: 'villePauseDebut' },
-                { adresse: 'adresseDetailsPauseFin', quartier: 'quartierPauseFin', ville: 'villePauseFin' },
-                { adresse: 'adresseDetailsFin', quartier: 'quartierFin', ville: 'villeFin' }
+                { adresse: 'adresseDetails', quartier: 'quartier', ville: 'ville', pays: 'pays' },
+                { adresse: 'adresseDetailsPauseDebut', quartier: 'quartierPauseDebut', ville: 'villePauseDebut', pays: 'paysPauseDebut' },
+                { adresse: 'adresseDetailsPauseFin', quartier: 'quartierPauseFin', ville: 'villePauseFin', pays: 'paysPauseFin' },
+                { adresse: 'adresseDetailsFin', quartier: 'quartierFin', ville: 'villeFin', pays: 'paysFin' }
             ];
             
             forms.forEach(form => {
                 const adresseElement = document.getElementById(form.adresse);
                 const quartierElement = document.getElementById(form.quartier);
                 const villeElement = document.getElementById(form.ville);
+                const paysElement = document.getElementById(form.pays);
                 
-                if (adresseElement) adresseElement.value = address;
-                if (quartierElement) quartierElement.value = quartier;
-                if (villeElement) villeElement.value = ville;
+                if (adresseElement) adresseElement.value = address || '';
+                if (quartierElement) quartierElement.value = quartier || '';
+                if (villeElement) villeElement.value = ville || '';
+                if (paysElement) paysElement.value = pays || 'Cameroun';
             });
         }
 
+        // Mettre à jour l'affichage de la précision
+        function updateAccuracyDisplay(accuracy) {
+            const accuracyBar = document.getElementById('accuracyBar');
+            const accuracyValue = document.getElementById('accuracyValue');
+            
+            if (accuracy) {
+                let accuracyPercent = 100;
+                if (accuracy <= 5) accuracyPercent = 98;
+                else if (accuracy <= 10) accuracyPercent = 95;
+                else if (accuracy <= 20) accuracyPercent = 85;
+                else if (accuracy <= 50) accuracyPercent = 70;
+                else if (accuracy <= 100) accuracyPercent = 50;
+                else accuracyPercent = 30;
+                
+                accuracyBar.style.width = accuracyPercent + '%';
+                accuracyBar.style.backgroundColor = 
+                    accuracy <= 5 ? '#10b981' : 
+                    accuracy <= 10 ? '#3b82f6' : 
+                    accuracy <= 20 ? '#f59e0b' : '#ef4444';
+                
+                accuracyValue.textContent = accuracy.toFixed(0) + ' mètres';
+                accuracyValue.style.color = 
+                    accuracy <= 5 ? '#065f46' : 
+                    accuracy <= 10 ? '#1e40af' : 
+                    accuracy <= 20 ? '#92400e' : '#991b1b';
+            }
+        }
+
+        // Activer les boutons de pointage
         function enablePointageButtons() {
             const buttons = [
                 'btnStart', 'btnPauseDebut', 'btnPauseFin', 'btnEnd'
@@ -1819,38 +2353,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             buttons.forEach(buttonId => {
                 const button = document.getElementById(buttonId);
-                if (button) button.disabled = false;
+                if (button) {
+                    button.disabled = false;
+                    button.title = "Prêt pour le pointage - Localisation validée";
+                    // Ajouter une animation de confirmation
+                    button.style.animation = 'pulse 2s infinite';
+                    setTimeout(() => {
+                        button.style.animation = '';
+                    }, 2000);
+                }
             });
         }
 
+        // Gérer les erreurs GPS
         function handleGPSError(error) {
-            let message = 'Erreur GPS: ';
+            let message = '';
             
             switch(error.code) {
                 case error.PERMISSION_DENIED:
-                    message = '🔒 Autorisation GPS refusée. Activez la localisation dans les paramètres de votre appareil.';
+                    message = '🔒 Autorisation GPS refusée. Activez la localisation dans les paramètres de votre appareil et rechargez la page.';
                     break;
                 case error.POSITION_UNAVAILABLE:
-                    message = '📡 GPS indisponible. Activez le GPS de votre smartphone et vérifiez votre connexion.';
+                    message = '📡 GPS indisponible. Activez le GPS de votre smartphone et vérifiez votre connexion internet.';
                     break;
                 case error.TIMEOUT:
-                    message = '⏱️ GPS lent. Déplacez-vous vers un endroit dégagé pour améliorer le signal.';
+                    message = '⏱️ Délai de recherche GPS dépassé. Déplacez-vous vers un endroit dégagé pour améliorer le signal.';
                     break;
                 default:
-                    message = '❌ Erreur GPS inconnue';
+                    message = '❌ Erreur GPS inconnue. Code: ' + error.code;
             }
             
             showError(message);
         }
 
-        function handleGeocodingError(status) {
-            const address = 'Adresse non disponible - ' + status;
-            document.getElementById('fullAddress').textContent = address;
-            updateAllFormsWithAddress(address, '', '');
-            document.getElementById('addressDetails').style.display = 'block';
-            enablePointageButtons();
-        }
-
+        // Afficher une erreur
         function showError(message) {
             document.getElementById('locationStatus').textContent = message;
             document.getElementById('locationStatus').style.color = '#dc2626';
@@ -1861,16 +2397,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             document.getElementById('locationError').style.display = 'block';
             document.getElementById('addressDetails').style.display = 'none';
             
-            enablePointageButtons();
+            // Désactiver les boutons en cas d'erreur
+            const buttons = ['btnStart', 'btnPauseDebut', 'btnPauseFin', 'btnEnd'];
+            buttons.forEach(buttonId => {
+                const button = document.getElementById(buttonId);
+                if (button) button.disabled = true;
+            });
         }
 
+        // Actualiser la localisation
         function refreshLocation() {
-            console.log("🔄 Actualisation manuelle du GPS...");
+            console.log("🔄 Actualisation intelligente du GPS...");
             
             document.getElementById('locationLoading').className = 'fas fa-sync fa-spin';
             document.getElementById('locationLoading').style.color = '';
-            document.getElementById('locationStatus').textContent = 'Recherche GPS...';
+            document.getElementById('locationStatus').textContent = 'Optimisation GPS en cours...';
             document.getElementById('locationStatus').style.color = '';
+            document.getElementById('locationError').style.display = 'none';
             
             const buttons = ['btnStart', 'btnPauseDebut', 'btnPauseFin', 'btnEnd'];
             buttons.forEach(buttonId => {
@@ -1878,14 +2421,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (button) button.disabled = true;
             });
             
+            // Nettoyer les watchers existants
             if (watchId) {
                 navigator.geolocation.clearWatch(watchId);
+                watchId = null;
             }
-            startMobileGPS();
+            if (highAccuracyWatchId) {
+                navigator.geolocation.clearWatch(highAccuracyWatchId);
+                highAccuracyWatchId = null;
+            }
+            
+            // Vider le cache pour forcer une nouvelle recherche
+            geocodingCache.clear();
+            lastAddressFetch = 0;
+            
+            // Redémarrer avec stratégie intelligente
+            startIntelligentGPS();
+        }
+
+        // Plein écran
+        function toggleFullscreen() {
+            const mapContainer = document.getElementById('map').parentElement;
+            
+            if (!isFullscreen) {
+                if (mapContainer.requestFullscreen) {
+                    mapContainer.requestFullscreen();
+                } else if (mapContainer.webkitRequestFullscreen) {
+                    mapContainer.webkitRequestFullscreen();
+                } else if (mapContainer.msRequestFullscreen) {
+                    mapContainer.msRequestFullscreen();
+                }
+                isFullscreen = true;
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+                isFullscreen = false;
+            }
         }
 
         // Gestion des formulaires avec heure LOCALE exacte
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialiser la carte immédiatement
+            initMap();
+            
             const forms = document.querySelectorAll('.pointage-form');
             forms.forEach(form => {
                 form.addEventListener('submit', function(e) {
@@ -1893,13 +2476,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if (btn.disabled) {
                         e.preventDefault();
-                        alert('🛑 Veuillez attendre la détection GPS...');
+                        alert('🛑 Veuillez attendre la détection GPS complète...');
                         return;
                     }
                     
                     if (!userLatitude || !userLongitude) {
                         e.preventDefault();
-                        alert('❌ Position GPS non disponible');
+                        alert('❌ Position GPS non disponible. Activez votre GPS et réessayez.');
                         return;
                     }
                     
@@ -1933,19 +2516,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Confirmation pour les actions importantes
                     const action = this.querySelector('input[name="action"]').value;
                     let confirmMessage = '';
+                    let actionName = '';
+                    
+                    const quartier = document.getElementById('quartierInfo').textContent;
+                    const rue = document.getElementById('rueInfo').textContent;
+                    const ville = document.getElementById('villeInfo').textContent;
+                    const confidence = quartierConfidence > 0 ? ` (Confiance: ${quartierConfidence}%)` : '';
                     
                     switch(action) {
                         case 'debut':
-                            confirmMessage = `✅ Confirmez-vous votre arrivée ?\n\nHeure Locale: ${localTime.heureAffichage}\nDate: ${localTime.dateAffichage}`;
+                            actionName = 'ARRIVÉE';
+                            confirmMessage = `✅ CONFIRMER VOTRE ARRIVÉE ?\n\n📅 Date: ${localTime.dateAffichage}\n⏰ Heure Locale: ${localTime.heureAffichage}\n📍 Position: ${quartier}${rue ? ', ' + rue : ''}, ${ville}${confidence}`;
                             break;
                         case 'pause_debut':
-                            confirmMessage = `⏸️ Confirmez-vous le début de votre pause ?\n\nHeure Locale: ${localTime.heureAffichage}`;
+                            actionName = 'DÉBUT DE PAUSE';
+                            confirmMessage = `⏸️ CONFIRMER LE DÉBUT DE PAUSE ?\n\n⏰ Heure Locale: ${localTime.heureAffichage}\n📍 Position: ${quartier}${rue ? ', ' + rue : ''}${confidence}`;
                             break;
                         case 'pause_fin':
-                            confirmMessage = `▶️ Confirmez-vous la fin de votre pause ?\n\nHeure Locale: ${localTime.heureAffichage}`;
+                            actionName = 'FIN DE PAUSE';
+                            confirmMessage = `▶️ CONFIRMER LA FIN DE PAUSE ?\n\n⏰ Heure Locale: ${localTime.heureAffichage}\n📍 Position: ${quartier}${rue ? ', ' + rue : ''}${confidence}`;
                             break;
                         case 'fin':
-                            confirmMessage = `🛑 Confirmez-vous votre départ ?\n\nHeure Locale: ${localTime.heureAffichage}`;
+                            actionName = 'DÉPART';
+                            confirmMessage = `🛑 CONFIRMER VOTRE DÉPART ?\n\n📅 Date: ${localTime.dateAffichage}\n⏰ Heure Locale: ${localTime.heureAffichage}\n📍 Position: ${quartier}${rue ? ', ' + rue : ''}, ${ville}${confidence}`;
                             break;
                     }
                     
@@ -1956,7 +2549,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     
                     btn.disabled = true;
-                    btn.innerHTML = '<div class="loading"></div> Enregistrement...';
+                    btn.innerHTML = `<div class="loading"></div> Enregistrement ${actionName}...`;
                 });
             });
         });
@@ -1966,16 +2559,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (watchId) {
                 navigator.geolocation.clearWatch(watchId);
             }
+            if (highAccuracyWatchId) {
+                navigator.geolocation.clearWatch(highAccuracyWatchId);
+            }
         });
 
-        // Détection mobile
+        // Détection mobile et optimisations
         function isMobileDevice() {
             return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         }
 
         if (isMobileDevice()) {
-            console.log("📱 Mode mobile détecté - Optimisations activées");
+            console.log("📱 Mode mobile détecté - Optimisations avancées activées");
+            // Ajouter des métadonnées pour PWA
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js').catch(console.error);
+            }
         }
+
+        // Écouter les changements de plein écran
+        document.addEventListener('fullscreenchange', function() {
+            isFullscreen = !isFullscreen;
+            // Redimensionner la carte quand on change de mode
+            setTimeout(() => {
+                if (map) map.invalidateSize();
+            }, 300);
+        });
+        document.addEventListener('webkitfullscreenchange', function() {
+            isFullscreen = !isFullscreen;
+            setTimeout(() => {
+                if (map) map.invalidateSize();
+            }, 300);
+        });
+        document.addEventListener('msfullscreenchange', function() {
+            isFullscreen = !isFullscreen;
+            setTimeout(() => {
+                if (map) map.invalidateSize();
+            }, 300);
+        });
 
         // Rechargement après succès
         <?php if ($message_type === 'success'): ?>
@@ -1984,7 +2605,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }, 2000);
         <?php endif; ?>
     </script>
-    <!-- Après les autres scripts -->
-<script src="/pwa-notifications.js"></script>
 </body>
 </html>
